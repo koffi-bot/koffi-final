@@ -25,7 +25,7 @@ const AdminDashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center min-h-[50vh]">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
       </div>
     );
@@ -81,39 +81,41 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2 font-poppins">Dashboard</h1>
+    <div className="min-w-0 p-4 sm:p-6 lg:p-8">
+      <div className="mb-6 md:mb-8">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2 font-poppins">
+          Dashboard
+        </h1>
         <p className="text-gray-400">Vue d'ensemble de votre boutique</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
         {statCards.map((stat) => {
           const Icon = stat.icon;
+
           return (
-            <div key={stat.title} className="bg-dark-light rounded-xl p-6">"
-              <div className="flex items-center justify-between mb-4">
-                <div className={`w-12 h-12 ${stat.color} rounded-lg flex items-center justify-center`}>
+            <div key={stat.title} className="min-w-0 bg-dark-light rounded-xl p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className={`w-12 h-12 flex-shrink-0 ${stat.color} rounded-lg flex items-center justify-center`}>
                   <Icon className="w-6 h-6 text-white" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-green-400" />
+                <TrendingUp className="w-5 h-5 text-green-400 flex-shrink-0" />
               </div>
               <h3 className="text-gray-400 text-sm mb-1">{stat.title}</h3>
-              <p className="text-white text-3xl font-bold">{stat.value}</p>
+              <p className="text-white text-2xl sm:text-3xl font-bold break-words">
+                {stat.value}
+              </p>
             </div>
           );
         })}
       </div>
 
-      {/* Recent Orders & Pending Orders */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Pending Orders Alert */}
+      <div className="grid grid-cols-1 gap-6 lg:gap-8">
         {stats?.pending_orders > 0 && (
-          <div className="lg:col-span-2 bg-yellow-500 bg-opacity-10 border border-yellow-500 rounded-xl p-6">
-            <div className="flex items-center gap-3">
-              <Clock className="w-6 h-6 text-yellow-400" />
-              <div>
+          <div className="bg-yellow-500 bg-opacity-10 border border-yellow-500 rounded-xl p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <Clock className="w-6 h-6 text-yellow-400 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
                 <h3 className="text-white font-bold text-lg">Commandes en attente</h3>
                 <p className="text-yellow-200">
                   Vous avez {stats.pending_orders} commande(s) en attente de traitement
@@ -121,7 +123,7 @@ const AdminDashboard = () => {
               </div>
               <Link
                 to="/admin/orders"
-                className="ml-auto bg-yellow-400 text-dark font-semibold px-6 py-2 rounded-lg hover:bg-yellow-300 transition"
+                className="w-full sm:w-auto text-center bg-yellow-400 text-dark font-semibold px-5 py-3 rounded-lg hover:bg-yellow-300 transition"
               >
                 Voir les commandes
               </Link>
@@ -129,34 +131,48 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Recent Orders */}
-        <div className="lg:col-span-2 bg-dark-light rounded-xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white">Commandes récentes</h2>
-            <Link to="/admin/orders" className="text-primary hover:text-primary-light font-semibold">
+        <div className="min-w-0 bg-dark-light rounded-xl p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-white">
+              Commandes récentes
+            </h2>
+            <Link
+              to="/admin/orders"
+              className="text-primary hover:text-primary-light font-semibold"
+            >
               Voir tout
             </Link>
           </div>
+
           <div className="space-y-4">
             {stats?.recent_orders?.slice(0, 5).map((order) => (
-              <div key={order.id} className="bg-dark rounded-lg p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-white font-semibold">#{order.order_number}</p>
-                  <p className="text-gray-400 text-sm">{order.user_name}</p>
+              <div
+                key={order.id}
+                className="bg-dark rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-white font-semibold break-words">#{order.order_number}</p>
+                  <p className="text-gray-400 text-sm break-words">{order.user_name}</p>
                   <p className="text-gray-400 text-xs">
                     {new Date(order.created_at).toLocaleDateString()}
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-primary font-bold text-lg">${order.total.toFixed(2)}</p>
+
+                <div className="sm:text-right">
+                  <p className="text-primary font-bold text-lg">
+                    ${Number(order.total || 0).toFixed(2)}
+                  </p>
                   <p className={`text-sm font-semibold ${getStatusColor(order.status)}`}>
                     {getStatusLabel(order.status)}
                   </p>
                 </div>
               </div>
             ))}
+
             {(!stats?.recent_orders || stats.recent_orders.length === 0) && (
-              <p className="text-gray-400 text-center py-8">Aucune commande récente</p>
+              <p className="text-gray-400 text-center py-8">
+                Aucune commande récente
+              </p>
             )}
           </div>
         </div>

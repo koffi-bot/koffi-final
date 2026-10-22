@@ -43,9 +43,9 @@ const Home = () => {
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-3xl mx-auto text-center" data-aos="fade-up">
             <h1 className="text-5xl md:text-7xl font-bold font-poppins mb-6 leading-tight">
-              <span className="text-white">Votre Style,</span>
+              <span className="text-white">L’ami de l’homme,</span>
               <br />
-              <span className="text-primary">Notre Passion</span>
+              <span className="text-primary">c’est les habits.</span>
             </h1>
             <p className="text-xl text-gray-300 mb-8 font-roboto">
               Découvrez une collection exclusive de vêtements, chaussures et accessoires premium
