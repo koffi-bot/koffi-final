@@ -23,7 +23,7 @@ from models import (
 )
 from auth import (
     get_password_hash, verify_password, create_access_token,
-    get_current_user, get_current_admin
+    get_current_user
 )
 from utils import create_slug, generate_order_number, serialize_datetime
 
@@ -55,6 +55,19 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+async def require_current_admin(current_user: dict = Depends(get_current_user)):
+    """Revalide le rôle administrateur depuis MongoDB à chaque requête."""
+    user_doc = await db.users.find_one(
+        {"id": current_user["id"]},
+        {"_id": 0, "role": 1, "email": 1}
+    )
+    if not user_doc or user_doc.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès administrateur refusé"
+        )
+    return {"id": current_user["id"], "email": user_doc.get("email"), "role": "admin"}
 
 # ============================================
 # AUTHENTICATION ROUTES
@@ -191,7 +204,7 @@ async def get_categories():
             cat['created_at'] = datetime.fromisoformat(cat['created_at'])
     return categories
 
-@api_router.post("/categories", response_model=Category, dependencies=[Depends(get_current_admin)])
+@api_router.post("/categories", response_model=Category, dependencies=[Depends(require_current_admin)])
 async def create_category(category_data: CategoryCreate):
     """Create a new category (Admin only)."""
     category = Category(**category_data.model_dump())
@@ -286,7 +299,7 @@ async def get_product(product_id: str):
     
     return product
 
-@api_router.post("/products", response_model=Product, dependencies=[Depends(get_current_admin)])
+@api_router.post("/products", response_model=Product, dependencies=[Depends(require_current_admin)])
 async def create_product(product_data: ProductCreate):
     """Create a new product (Admin only)."""
     category = await db.categories.find_one({"id": product_data.category_id})
@@ -313,7 +326,7 @@ async def create_product(product_data: ProductCreate):
     
     return product
 
-@api_router.put("/products/{product_id}", response_model=Product, dependencies=[Depends(get_current_admin)])
+@api_router.put("/products/{product_id}", response_model=Product, dependencies=[Depends(require_current_admin)])
 async def update_product(product_id: str, product_data: ProductCreate):
     """Update a product (Admin only)."""
     existing = await db.products.find_one({"id": product_id})
@@ -334,7 +347,7 @@ async def update_product(product_id: str, product_data: ProductCreate):
     
     return product
 
-@api_router.delete("/products/{product_id}", dependencies=[Depends(get_current_admin)])
+@api_router.delete("/products/{product_id}", dependencies=[Depends(require_current_admin)])
 async def delete_product(product_id: str):
     """Delete a product (Admin only)."""
     product = await db.products.find_one({"id": product_id})
@@ -434,6 +447,10 @@ async def add_to_cart(item_data: CartItemBase, current_user: dict = Depends(get_
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     
+    requested_quantity = item_data.quantity
+    if requested_quantity > int(product.get("stock", 0)):
+        raise HTTPException(status_code=409, detail="Stock insuffisant pour ce produit")
+
     # Check if item already in cart
     existing_item = await db.cart.find_one({
         "user_id": current_user["id"],
@@ -444,7 +461,9 @@ async def add_to_cart(item_data: CartItemBase, current_user: dict = Depends(get_
     
     if existing_item:
         # Update quantity
-        new_quantity = existing_item["quantity"] + item_data.quantity
+        new_quantity = existing_item["quantity"] + requested_quantity
+        if new_quantity > min(99, int(product.get("stock", 0))):
+            raise HTTPException(status_code=409, detail="Quantité supérieure au stock disponible")
         await db.cart.update_one(
             {"id": existing_item["id"]},
             {"$set": {"quantity": new_quantity}}
@@ -479,7 +498,15 @@ async def add_to_cart(item_data: CartItemBase, current_user: dict = Depends(get_
 
 @api_router.put("/cart/{item_id}")
 async def update_cart_item(item_id: str, quantity: int, current_user: dict = Depends(get_current_user)):
-    """Update cart item quantity."""
+    """Update cart item quantity after checking current stock."""
+    if quantity < 1 or quantity > 99:
+        raise HTTPException(status_code=422, detail="La quantité doit être comprise entre 1 et 99")
+    cart_item = await db.cart.find_one({"id": item_id, "user_id": current_user["id"]})
+    if not cart_item:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+    product = await db.products.find_one({"id": cart_item["product_id"]})
+    if not product or quantity > int(product.get("stock", 0)):
+        raise HTTPException(status_code=409, detail="Stock insuffisant pour cette quantité")
     result = await db.cart.update_one(
         {"id": item_id, "user_id": current_user["id"]},
         {"$set": {"quantity": quantity}}
@@ -548,29 +575,94 @@ async def remove_from_wishlist(product_id: str, current_user: dict = Depends(get
 # ORDER ROUTES
 # ============================================
 
-@api_router.post("/orders", response_model=Order)
+@api_router.post("/orders", response_model=Order, status_code=status.HTTP_201_CREATED)
 async def create_order(order_data: OrderCreate, current_user: dict = Depends(get_current_user)):
-    """Create a new order."""
-    order = Order(**order_data.model_dump())
-    order.order_number = generate_order_number()
-    
-    doc = order.model_dump()
-    doc["created_at"] = doc["created_at"].isoformat()
-    doc["updated_at"] = doc["updated_at"].isoformat()
-    
-    await db.orders.insert_one(doc)
-    
-    # Update product sold_count
-    for item in order.items:
-        await db.products.update_one(
-            {"id": item.product_id},
-            {"$inc": {"sold_count": item.quantity}}
+    """Create an order using authoritative prices, identity and stock from MongoDB."""
+    user_doc = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password": 0})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+
+    # Regrouper les lignes identiques pour éviter de contourner le contrôle de stock.
+    requested = {}
+    for line in order_data.items:
+        key = (line.product_id, line.size, line.color)
+        requested[key] = requested.get(key, 0) + line.quantity
+    if not requested:
+        raise HTTPException(status_code=400, detail="Le panier est vide")
+
+    order_items = []
+    subtotal_cents = 0
+    stock_decrements = []
+    try:
+        for (product_id, size, color), quantity in requested.items():
+            if quantity < 1 or quantity > 99:
+                raise HTTPException(status_code=422, detail="Quantité invalide")
+            product = await db.products.find_one({"id": product_id}, {"_id": 0})
+            if not product:
+                raise HTTPException(status_code=404, detail=f"Produit introuvable: {product_id}")
+            price = float(product.get("price", 0))
+            if price < 0:
+                raise HTTPException(status_code=409, detail="Prix produit invalide")
+            price_cents = round(price * 100)
+            line_total_cents = price_cents * quantity
+            subtotal_cents += line_total_cents
+
+            # Mise à jour atomique : deux clients ne peuvent pas acheter le dernier article.
+            reserve = await db.products.update_one(
+                {"id": product_id, "stock": {"$gte": quantity}},
+                {"$inc": {"stock": -quantity}}
+            )
+            if reserve.modified_count != 1:
+                raise HTTPException(status_code=409, detail=f"Stock insuffisant pour {product.get('name', 'ce produit')}")
+            stock_decrements.append((product_id, quantity))
+            order_items.append({
+                "product_id": product_id,
+                "product_name": product.get("name", ""),
+                "product_image": (product.get("images") or [""])[0],
+                "quantity": quantity,
+                "price": price_cents / 100,
+                "size": size,
+                "color": color,
+            })
+
+        subtotal = subtotal_cents / 100
+        # Conserver la règle de livraison actuelle, mais calculée côté serveur.
+        shipping = 0 if subtotal >= 100 else 10
+        total = round(subtotal + shipping, 2)
+        order = Order(
+            items=order_items,
+            subtotal=subtotal,
+            shipping=shipping,
+            total=total,
+            shipping_address=order_data.shipping_address,
+            shipping_city=order_data.shipping_city,
+            shipping_postal_code=order_data.shipping_postal_code,
+            shipping_country=order_data.shipping_country,
+            phone=order_data.phone,
+            payment_method=order_data.payment_method,
+            payment_phone=order_data.payment_phone,
+            user_id=current_user["id"],
+            user_email=user_doc["email"],
+            user_name=user_doc["full_name"],
+            status="pending",
+            payment_status="pending",
         )
-    
-    # Clear user's cart
-    await db.cart.delete_many({"user_id": current_user["id"]})
-    
-    return order
+        order.order_number = generate_order_number()
+        doc = order.model_dump()
+        doc["created_at"] = doc["created_at"].isoformat()
+        doc["updated_at"] = doc["updated_at"].isoformat()
+        doc["stock_reserved"] = True
+        await db.orders.insert_one(doc)
+        await db.cart.delete_many({"user_id": current_user["id"]})
+        return order
+    except Exception:
+        # Annuler les réservations si la création de la commande échoue.
+        for product_id, quantity in reversed(stock_decrements):
+            await db.products.update_one(
+                {"id": product_id},
+                {"$inc": {"stock": quantity}}
+            )
+        raise
 
 @api_router.get("/orders", response_model=List[Order])
 async def get_user_orders(current_user: dict = Depends(get_current_user)):
@@ -601,7 +693,7 @@ async def get_order(order_id: str, current_user: dict = Depends(get_current_user
 # ADMIN ORDER ROUTES
 # ============================================
 
-@api_router.get("/admin/orders", response_model=List[Order], dependencies=[Depends(get_current_admin)])
+@api_router.get("/admin/orders", response_model=List[Order], dependencies=[Depends(require_current_admin)])
 async def get_all_orders():
     """Get all orders (Admin only)."""
     orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
@@ -612,24 +704,60 @@ async def get_all_orders():
             order['updated_at'] = datetime.fromisoformat(order['updated_at'])
     return orders
 
-@api_router.put("/admin/orders/{order_id}/status", dependencies=[Depends(get_current_admin)])
+@api_router.put("/admin/orders/{order_id}/status", dependencies=[Depends(require_current_admin)])
 async def update_order_status(order_id: str, status: str, payment_status: Optional[str] = None):
-    """Update order status (Admin only)."""
-    update_data = {"status": status, "updated_at": datetime.utcnow().isoformat()}
-    if payment_status:
-        update_data["payment_status"] = payment_status
-    
-    result = await db.orders.update_one({"id": order_id}, {"$set": update_data})
-    if result.modified_count == 0:
+    """Update order status with validated transitions and one-time stock release."""
+    allowed_statuses = {"pending", "processing", "shipped", "delivered", "cancelled"}
+    allowed_payment_statuses = {"pending", "paid", "failed"}
+    if status not in allowed_statuses:
+        raise HTTPException(status_code=422, detail="Statut de commande invalide")
+    if payment_status is not None and payment_status not in allowed_payment_statuses:
+        raise HTTPException(status_code=422, detail="Statut de paiement invalide")
+
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+    current_status = order.get("status", "pending")
+    transitions = {
+        "pending": {"processing", "cancelled"},
+        "processing": {"shipped", "cancelled"},
+        "shipped": {"delivered"},
+        "delivered": set(),
+        "cancelled": set(),
+    }
+    if status != current_status and status not in transitions.get(current_status, set()):
+        raise HTTPException(status_code=409, detail=f"Transition impossible: {current_status} -> {status}")
+    if payment_status == "paid" and status == "cancelled":
+        raise HTTPException(status_code=409, detail="Une commande payée ne peut pas être annulée sans remboursement")
+    if current_status == "cancelled" and payment_status == "paid":
+        raise HTTPException(status_code=409, detail="Une commande annulée ne peut pas être marquée payée")
+
+    update_data = {"status": status, "updated_at": datetime.utcnow().isoformat()}
+    if payment_status is not None:
+        update_data["payment_status"] = payment_status
+
+    # Libérer le stock une seule fois si une commande est annulée.
+    if status == "cancelled" and order.get("stock_reserved", True):
+        for item in order.get("items", []):
+            await db.products.update_one(
+                {"id": item["product_id"]},
+                {"$inc": {"stock": item["quantity"]}}
+            )
+        update_data["stock_reserved"] = False
+
+    result = await db.orders.update_one(
+        {"id": order_id, "status": current_status},
+        {"$set": update_data}
+    )
+    if result.modified_count != 1:
+        raise HTTPException(status_code=409, detail="La commande a été modifiée simultanément; rechargez-la")
     return {"message": "Order status updated"}
 
 # ============================================
 # ADMIN STATS
 # ============================================
 
-@api_router.get("/admin/stats", response_model=StatsResponse, dependencies=[Depends(get_current_admin)])
+@api_router.get("/admin/stats", response_model=StatsResponse, dependencies=[Depends(require_current_admin)])
 async def get_admin_stats():
     """Get admin dashboard statistics."""
     total_products = await db.products.count_documents({})
@@ -663,7 +791,7 @@ async def get_admin_stats():
 # ADMIN USERS
 # ============================================
 
-@api_router.get("/admin/users", response_model=List[UserResponse], dependencies=[Depends(get_current_admin)])
+@api_router.get("/admin/users", response_model=List[UserResponse], dependencies=[Depends(require_current_admin)])
 async def get_all_users():
     """Get all users (Admin only)."""
     users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
@@ -703,7 +831,7 @@ async def send_contact_message(message_data: ContactMessageCreate):
     await db.messages.insert_one(doc)
     return contact_message
 
-@api_router.get("/admin/messages", response_model=List[ContactMessage], dependencies=[Depends(get_current_admin)])
+@api_router.get("/admin/messages", response_model=List[ContactMessage], dependencies=[Depends(require_current_admin)])
 async def get_contact_messages():
     """Get all contact messages (Admin only)."""
     messages = await db.messages.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
@@ -716,7 +844,7 @@ async def get_contact_messages():
 # FILE UPLOAD ROUTES
 # ============================================
 
-@api_router.post("/upload", dependencies=[Depends(get_current_admin)])
+@api_router.post("/upload", dependencies=[Depends(require_current_admin)])
 async def upload_file(file: UploadFile = File(...)):
     """Upload a file (Admin only)."""
     # Generate unique filename
