@@ -10,6 +10,8 @@ from typing import List, Optional
 from datetime import datetime
 import shutil
 import uuid
+from pymongo.errors import DuplicateKeyError
+from pymongo.collation import Collation
 
 # Import local modules
 from models import (
@@ -38,6 +40,10 @@ db = client[os.environ.get('DB_NAME', 'koffi_shop')]
 
 # Create the main app
 app = FastAPI(title="KOFFI SHOP API")
+
+@app.on_event("startup")
+async def ensure_user_email_unique_index():
+    await db.users.create_index([("email", 1)], unique=True, collation=Collation(locale="en", strength=2), name="uniq_users_email_case_insensitive")
 
 # Create upload directory
 UPLOAD_DIR = ROOT_DIR / "uploads"
@@ -147,7 +153,10 @@ async def register(user_data: UserCreate):
     doc["updated_at"] = doc["updated_at"].isoformat()
     
     # Insert into database
-    await db.users.insert_one(doc)
+    try:
+        await db.users.insert_one(doc)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Un compte existe déjà avec cet e-mail. Connectez-vous.")
     
     # Create access token
     access_token = create_access_token(
@@ -163,7 +172,8 @@ async def register(user_data: UserCreate):
 async def login(credentials: UserLogin):
     """Login user."""
     # Find user
-    user_doc = await db.users.find_one({"email": credentials.email})
+    normalized_email = str(credentials.email).strip().lower()
+    user_doc = await db.users.find_one({"email": normalized_email}, collation=Collation(locale="en", strength=2))
     if not user_doc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
