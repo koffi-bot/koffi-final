@@ -9,9 +9,11 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 # Security configuration
 DEFAULT_SECRET_KEY = "your-secret-key-change-in-production-koffi-shop-2025"
-SECRET_KEY = os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
-if os.environ.get("RENDER", "").lower() == "true" and SECRET_KEY == DEFAULT_SECRET_KEY:
-    raise RuntimeError("SECRET_KEY must be configured in Render before starting KOFFI SHOP.")
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY or len(SECRET_KEY.encode("utf-8")) < 32:
+    if os.environ.get("RENDER", "").lower() == "true":
+        raise RuntimeError("SECRET_KEY must be configured in Render with at least 32 bytes.")
+    SECRET_KEY = DEFAULT_SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
