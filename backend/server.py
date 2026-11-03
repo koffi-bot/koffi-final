@@ -69,6 +69,22 @@ async def require_current_admin(current_user: dict = Depends(get_current_user)):
         )
     return {"id": current_user["id"], "email": user_doc.get("email"), "role": "admin"}
 
+async def require_current_collaborator(current_user: dict = Depends(get_current_user)):
+    """Autorise uniquement les collaborateurs actifs, après relecture MongoDB."""
+    user_doc = await db.users.find_one(
+        {"id": current_user["id"]},
+        {"_id": 0, "role": 1, "email": 1, "is_active": 1}
+    )
+    if not user_doc or user_doc.get("role") != "collaborator" or user_doc.get("is_active", True) is False:
+        raise HTTPException(status_code=403, detail="Accès collaborateur refusé")
+    return {"id": current_user["id"], "email": user_doc.get("email"), "role": "collaborator"}
+
+async def require_current_admin_or_collaborator(current_user: dict = Depends(get_current_user)):
+    user_doc = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "role": 1, "email": 1, "is_active": 1})
+    if not user_doc or user_doc.get("is_active", True) is False or user_doc.get("role") not in {"admin", "collaborator"}:
+        raise HTTPException(status_code=403, detail="Accès réservé à l'équipe KOFFI SHOP")
+    return {"id": current_user["id"], "email": user_doc.get("email"), "role": user_doc["role"]}
+
 
 
 async def create_user_notification(user_id: str, kind: str, title: str, message: str, link: str = "/"):
@@ -271,6 +287,26 @@ async def get_category(category_id: str):
 
 # ============================================
 # PRODUCT ROUTES
+    
+@api_router.put("/categories/{category_id}", dependencies=[Depends(require_current_admin)])
+async def update_category(category_id: str, category_data: CategoryCreate):
+    existing = await db.categories.find_one({"id": category_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Catégorie introuvable")
+    update = category_data.model_dump()
+    update["slug"] = create_slug(category_data.name)
+    await db.categories.update_one({"id": category_id}, {"$set": update})
+    return await db.categories.find_one({"id": category_id}, {"_id": 0})
+
+@api_router.delete("/categories/{category_id}", dependencies=[Depends(require_current_admin)])
+async def delete_category(category_id: str):
+    if not await db.categories.find_one({"id": category_id}):
+        raise HTTPException(status_code=404, detail="Catégorie introuvable")
+    if await db.products.count_documents({"category_id": category_id}) > 0:
+        raise HTTPException(status_code=409, detail="Impossible de supprimer une catégorie qui contient des produits")
+    await db.categories.delete_one({"id": category_id})
+    return {"message": "Catégorie supprimée"}
+
 # ============================================
 
 @api_router.get("/products", response_model=List[Product])
@@ -741,6 +777,121 @@ async def get_order(order_id: str, current_user: dict = Depends(get_current_user
 # ============================================
 
 @api_router.get("/admin/orders", response_model=List[Order], dependencies=[Depends(require_current_admin)])
+@api_router.get("/collaborator/orders")
+async def get_collaborator_orders(current_user: dict = Depends(require_current_collaborator)):
+    """Un collaborateur ne voit que les missions qui lui sont attribuées."""
+    orders = await db.orders.find(
+        {"assigned_collaborator_id": current_user["id"]},
+        {"_id": 0, "user_email": 0}
+    ).sort("created_at", -1).to_list(500)
+    return orders
+
+@api_router.post("/admin/orders/{order_id}/assign", dependencies=[Depends(require_current_admin)])
+async def assign_order_to_collaborator(order_id: str, payload: dict):
+    collaborator_id = str(payload.get("collaborator_id", "")).strip()
+    collaborator = await db.users.find_one(
+        {"id": collaborator_id, "role": "collaborator", "is_active": {"$ne": False}},
+        {"_id": 0, "id": 1, "full_name": 1}
+    )
+    if not collaborator:
+        raise HTTPException(status_code=404, detail="Collaborateur actif introuvable")
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Commande introuvable")
+    if order.get("status") in {"cancelled", "delivered"}:
+        raise HTTPException(status_code=409, detail="Cette commande ne peut plus être attribuée")
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "assigned_collaborator_id": collaborator_id,
+        "assigned_collaborator_name": collaborator.get("full_name", ""),
+        "delivery_assignment_status": "offered",
+        "delivery_assigned_at": datetime.utcnow().isoformat()
+    }})
+    await create_user_notification(
+        collaborator_id, "delivery_assignment", "Nouvelle mission de livraison",
+        f"La commande #{order.get('order_number', order_id)} vous a été proposée. Acceptez ou refusez la mission.",
+        "/admin/orders"
+    )
+    return {"message": "Mission transmise au collaborateur"}
+
+@api_router.get("/admin/collaborators", dependencies=[Depends(require_current_admin)])
+async def get_collaborators():
+    return await db.users.find(
+        {"role": "collaborator"}, {"_id": 0, "password": 0}
+    ).sort("created_at", -1).to_list(500)
+
+@api_router.post("/admin/collaborators", dependencies=[Depends(require_current_admin)])
+async def create_collaborator(payload: dict):
+    email = str(payload.get("email", "")).strip().lower()
+    password = str(payload.get("password", ""))
+    full_name = str(payload.get("full_name", "")).strip()
+    phone = str(payload.get("phone", "")).strip()
+    if not email or "@" not in email or len(password) < 8 or not full_name:
+        raise HTTPException(status_code=422, detail="Nom, email valide et mot de passe d'au moins 8 caractères requis")
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="Cet email est déjà utilisé")
+    now = datetime.utcnow().isoformat()
+    user = {
+        "id": str(uuid.uuid4()), "email": email, "full_name": full_name,
+        "phone": phone or None, "role": "collaborator", "password": get_password_hash(password),
+        "is_active": True, "created_at": now, "updated_at": now
+    }
+    await db.users.insert_one(user)
+    return {"id": user["id"], "email": email, "full_name": full_name, "role": "collaborator", "is_active": True}
+
+@api_router.put("/admin/collaborators/{collaborator_id}/active", dependencies=[Depends(require_current_admin)])
+async def set_collaborator_active(collaborator_id: str, payload: dict):
+    active = payload.get("is_active")
+    if not isinstance(active, bool):
+        raise HTTPException(status_code=422, detail="is_active doit être booléen")
+    result = await db.users.update_one(
+        {"id": collaborator_id, "role": "collaborator"},
+        {"$set": {"is_active": active, "updated_at": datetime.utcnow().isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Collaborateur introuvable")
+    if not active:
+        await db.orders.update_many(
+            {"assigned_collaborator_id": collaborator_id, "delivery_assignment_status": "offered"},
+            {"$set": {"delivery_assignment_status": "reassignment_required"}}
+        )
+    return {"message": "Accès collaborateur mis à jour"}
+
+@api_router.post("/collaborator/orders/{order_id}/respond")
+async def respond_to_delivery_assignment(order_id: str, payload: dict, current_user: dict = Depends(require_current_collaborator)):
+    decision = payload.get("decision")
+    if decision not in {"accepted", "refused"}:
+        raise HTTPException(status_code=422, detail="Décision invalide")
+    result = await db.orders.update_one(
+        {"id": order_id, "assigned_collaborator_id": current_user["id"], "delivery_assignment_status": "offered"},
+        {"$set": {"delivery_assignment_status": decision, "delivery_response_at": datetime.utcnow().isoformat()}}
+    )
+    if result.modified_count != 1:
+        raise HTTPException(status_code=409, detail="Cette mission n'est plus disponible")
+    admins = await db.users.find({"role": "admin"}, {"_id": 0, "id": 1}).to_list(500)
+    for admin in admins:
+        await create_user_notification(admin["id"], "delivery_response", "Réponse à une mission",
+            f"{current_user.get('email')} a {('accepté' if decision == 'accepted' else 'refusé')} la commande #{order_id}.", "/admin/orders")
+    return {"message": "Réponse enregistrée"}
+
+@api_router.put("/collaborator/orders/{order_id}/delivery-status")
+async def update_delivery_progress(order_id: str, payload: dict, current_user: dict = Depends(require_current_collaborator)):
+    delivery_status = payload.get("status")
+    allowed = {"shipped", "delivered"}
+    if delivery_status not in allowed:
+        raise HTTPException(status_code=422, detail="Étape de livraison invalide")
+    order = await db.orders.find_one({"id": order_id, "assigned_collaborator_id": current_user["id"], "delivery_assignment_status": "accepted"})
+    if not order:
+        raise HTTPException(status_code=404, detail="Mission acceptée introuvable")
+    if delivery_status == "shipped" and order.get("status") != "processing":
+        raise HTTPException(status_code=409, detail="La commande doit être préparée par l'Admin avant le départ")
+    if delivery_status == "delivered" and order.get("status") != "shipped":
+        raise HTTPException(status_code=409, detail="La commande doit être en livraison")
+    await db.orders.update_one({"id": order_id}, {"$set": {"status": delivery_status, "updated_at": datetime.utcnow().isoformat()}})
+    await notify_all_admins("delivery_progress", "Livraison mise à jour", f"La commande #{order.get('order_number', order_id)} est maintenant : {delivery_status}.")
+    await create_user_notification(order["user_id"], "order_update", "Mise à jour de votre commande", f"Votre commande #{order.get('order_number', order_id)} est maintenant : {delivery_status}.", "/orders")
+    return {"message": "Étape de livraison mise à jour"}
+
+
 async def get_all_orders():
     """Get all orders (Admin only)."""
     orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
