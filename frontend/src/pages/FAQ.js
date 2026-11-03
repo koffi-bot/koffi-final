@@ -43,7 +43,7 @@ const FAQ = () => {
     },
     {
       question: 'Proposez-vous des réductions ?',
-      answer: 'Oui ! Nous offrons régulièrement des promotions et réductions. Inscrivez-vous à notre newsletter pour recevoir nos offres exclusives.'
+      answer: 'Oui ! Nous proposons régulièrement des promotions et des réductions. Consultez notre boutique pour découvrir les offres en cours.'
     }
   ];
 
