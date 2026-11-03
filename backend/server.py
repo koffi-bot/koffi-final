@@ -209,7 +209,20 @@ async def update_profile(
     """Update user profile."""
     update_data = {}
     if full_name: update_data["full_name"] = full_name
-    if phone: update_data["phone"] = phone
+    if phone is not None:
+        phone_key = normalize_phone(phone)
+        if phone_key:
+            existing_phone = await db.users.find_one({
+                "normalized_phone": phone_key,
+                "id": {"$ne": current_user["id"]}
+            })
+            if existing_phone:
+                raise HTTPException(status_code=409, detail="Ce numéro de téléphone est déjà associé à un autre compte.")
+            update_data["phone"] = phone.strip()
+            update_data["normalized_phone"] = phone_key
+        else:
+            update_data["phone"] = None
+            update_data["normalized_phone"] = None
     if address: update_data["address"] = address
     if city: update_data["city"] = city
     if postal_code: update_data["postal_code"] = postal_code
