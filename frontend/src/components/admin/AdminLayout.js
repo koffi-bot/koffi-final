@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, Outlet, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LayoutDashboard, Package, ShoppingBag, Users, MessageSquare, LogOut } from 'lucide-react';
+import NotificationBell from '../layout/NotificationBell';
 
 const AdminLayout = () => {
   const { isAdmin, logout, loading } = useAuth();
@@ -35,6 +36,7 @@ const AdminLayout = () => {
             <span className="text-white">KOFFI</span>
             <span className="text-primary"> ADMIN</span>
           </h2>
+          <div className="md:hidden"><NotificationBell /></div>
           <button
             type="button"
             onClick={logout}
@@ -44,6 +46,8 @@ const AdminLayout = () => {
             Déconnexion
           </button>
         </div>
+
+        <div className="hidden px-4 pt-4 md:block"><NotificationBell /></div>
 
         <nav aria-label="Navigation administration" className="flex gap-2 overflow-x-auto overscroll-x-contain px-3 py-3 md:flex-1 md:flex-col md:overflow-x-visible md:overflow-y-auto md:px-4 md:py-5">
           {navItems.map((item) => {
