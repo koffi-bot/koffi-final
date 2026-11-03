@@ -93,6 +93,7 @@ class ReviewBase(BaseModel):
 class ReviewCreate(ReviewBase):
     # Identity is supplied by the authenticated session, never trusted from the client.
     user_id: Optional[str] = None
+    user_name: Optional[str] = None
 
 class Review(ReviewBase):
     model_config = ConfigDict(extra="ignore")
