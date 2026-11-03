@@ -69,6 +69,49 @@ async def require_current_admin(current_user: dict = Depends(get_current_user)):
         )
     return {"id": current_user["id"], "email": user_doc.get("email"), "role": "admin"}
 
+
+
+async def create_user_notification(user_id: str, kind: str, title: str, message: str, link: str = "/"):
+    now = datetime.utcnow().isoformat()
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()), "user_id": user_id, "type": kind,
+        "title": title, "message": message, "link": link,
+        "is_read": False, "created_at": now
+    })
+
+async def notify_all_admins(kind: str, title: str, message: str, link: str = "/admin/orders"):
+    admins = await db.users.find({"role": "admin"}, {"_id": 0, "id": 1}).to_list(500)
+    for admin in admins:
+        await create_user_notification(admin["id"], kind, title, message, link)
+
+# ============================================
+# NOTIFICATION ROUTES
+# ============================================
+
+@api_router.get("/notifications")
+async def get_notifications(current_user: dict = Depends(get_current_user)):
+    items = await db.notifications.find({"user_id": current_user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    unread = await db.notifications.count_documents({"user_id": current_user["id"], "is_read": False})
+    return {"items": items, "unread_count": unread}
+
+@api_router.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.notifications.update_one(
+        {"id": notification_id, "user_id": current_user["id"]},
+        {"$set": {"is_read": True}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Notification introuvable")
+    return {"message": "Notification marquée comme lue"}
+
+@api_router.put("/notifications/read-all")
+async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    await db.notifications.update_many(
+        {"user_id": current_user["id"], "is_read": False},
+        {"$set": {"is_read": True}}
+    )
+    return {"message": "Notifications marquées comme lues"}
+
 # ============================================
 # AUTHENTICATION ROUTES
 # ============================================
@@ -317,6 +360,9 @@ async def create_product(product_data: ProductCreate):
     doc["updated_at"] = doc["updated_at"].isoformat()
     
     await db.products.insert_one(doc)
+    customers = await db.users.find({"role": "customer"}, {"_id": 0, "id": 1}).to_list(5000)
+    for customer in customers:
+        await create_user_notification(customer["id"], "new_product", "Nouveau produit disponible", f"{product.name} vient d’être ajouté à KOFFI SHOP.", "/shop")
     
     # Update category product count
     await db.categories.update_one(
@@ -653,6 +699,7 @@ async def create_order(order_data: OrderCreate, current_user: dict = Depends(get
         doc["updated_at"] = doc["updated_at"].isoformat()
         doc["stock_reserved"] = True
         await db.orders.insert_one(doc)
+        await notify_all_admins("new_order", "Nouvelle commande reçue", `Commande #${order.order_number} de ${user_doc.get("full_name", "un client")}`, "/admin/orders")
         await db.cart.delete_many({"user_id": current_user["id"]})
         return order
     except Exception:
@@ -753,6 +800,9 @@ async def update_order_status(order_id: str, status: str, payment_status: Option
     )
     if result.modified_count != 1:
         raise HTTPException(status_code=409, detail="La commande a été modifiée simultanément; rechargez-la")
+
+    if status != current_status:
+        await create_user_notification(order["user_id"], "order_update", "Mise à jour de votre commande", f"Votre commande #{order.get('order_number', order_id)} est maintenant : {status}.", "/orders")
 
     if release_stock:
         for item in order.get("items", []):
