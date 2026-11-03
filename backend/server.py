@@ -727,30 +727,39 @@ async def update_order_status(order_id: str, status: str, payment_status: Option
     }
     if status != current_status and status not in transitions.get(current_status, set()):
         raise HTTPException(status_code=409, detail=f"Transition impossible: {current_status} -> {status}")
-    if payment_status == "paid" and status == "cancelled":
-        raise HTTPException(status_code=409, detail="Une commande payée ne peut pas être annulée sans remboursement")
-    if current_status == "cancelled" and payment_status == "paid":
-        raise HTTPException(status_code=409, detail="Une commande annulée ne peut pas être marquée payée")
+    if payment_status == "paid":
+        raise HTTPException(
+            status_code=409,
+            detail="Le statut payé doit provenir d'une confirmation vérifiée du prestataire de paiement"
+        )
+    if status in {"processing", "shipped", "delivered"} and order.get("payment_status") != "paid":
+        raise HTTPException(status_code=409, detail="La commande doit être payée avant son traitement")
+    if order.get("payment_status") == "paid" and status == "cancelled":
+        raise HTTPException(status_code=409, detail="Une commande payée nécessite un remboursement avant annulation")
 
     update_data = {"status": status, "updated_at": datetime.utcnow().isoformat()}
     if payment_status is not None:
         update_data["payment_status"] = payment_status
 
-    # Libérer le stock une seule fois si une commande est annulée.
-    if status == "cancelled" and order.get("stock_reserved", True):
+    # Réserver atomiquement le droit de libérer le stock : une seule annulation gagne.
+    release_stock = status == "cancelled" and order.get("stock_reserved", True)
+    if release_stock:
+        update_data["stock_reserved"] = False
+
+    result = await db.orders.update_one(
+        {"id": order_id, "status": current_status,
+         **({"stock_reserved": {"$ne": False}} if release_stock else {})},
+        {"$set": update_data}
+    )
+    if result.modified_count != 1:
+        raise HTTPException(status_code=409, detail="La commande a été modifiée simultanément; rechargez-la")
+
+    if release_stock:
         for item in order.get("items", []):
             await db.products.update_one(
                 {"id": item["product_id"]},
                 {"$inc": {"stock": item["quantity"]}}
             )
-        update_data["stock_reserved"] = False
-
-    result = await db.orders.update_one(
-        {"id": order_id, "status": current_status},
-        {"$set": update_data}
-    )
-    if result.modified_count != 1:
-        raise HTTPException(status_code=409, detail="La commande a été modifiée simultanément; rechargez-la")
     return {"message": "Order status updated"}
 
 # ============================================
