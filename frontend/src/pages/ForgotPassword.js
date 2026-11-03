@@ -7,16 +7,17 @@ const ForgotPassword = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setLoading(true);
+    setError('');
     try {
       await authAPI.forgotPassword(email.trim());
       setSubmitted(true);
-    } catch (error) {
-      // Keep the same public message for privacy; do not reveal whether an account exists.
-      setSubmitted(true);
+    } catch (requestError) {
+      setError("Le service est momentanément indisponible. Réessayez dans quelques instants.");
     } finally {
       setLoading(false);
     }
@@ -47,6 +48,7 @@ const ForgotPassword = () => {
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                 </div>
               </div>
+              {error && <p role="alert" className="text-red-400 text-sm">{error}</p>}
               <button type="submit" disabled={loading} className="w-full bg-primary text-dark font-bold py-3 rounded-lg hover:bg-primary-light transition disabled:opacity-50">
                 {loading ? 'Envoi...' : 'Envoyer le lien'}
               </button>
