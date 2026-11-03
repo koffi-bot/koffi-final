@@ -34,14 +34,14 @@ class OrderSecurityContractTests(unittest.TestCase):
         self.assertIn('"stock": {"$gte": quantity}', SERVER)
         self.assertIn('"$inc": {"stock": -quantity}', SERVER)
         self.assertIn('"user_id": current_user["id"]', SERVER)
-        self.assertIn('"stock_reserved": True', SERVER)
+        self.assertIn('doc["stock_reserved"] = True', SERVER)
 
     def test_order_state_and_payment_transitions_are_restricted(self):
         self.assertIn("allowed_statuses", SERVER)
         self.assertIn("allowed_payment_statuses", SERVER)
         self.assertIn("Le statut payé doit provenir", SERVER)
         self.assertIn("La commande doit être payée avant son traitement", SERVER)
-        self.assertIn('"stock_reserved": False', SERVER)
+        self.assertIn('update_data["stock_reserved"] = False', SERVER)
 
     def test_cart_stock_limits_and_ownership(self):
         self.assertIn("quantity < 1 or quantity > 99", SERVER)
