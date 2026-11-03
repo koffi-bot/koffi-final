@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authAPI.register(data);
       localStorage.setItem('token', response.data.access_token);
-      setUser(response.data.user);
+      saveUser(response.data.user);
       toast.success('Inscription réussie !');
       return response.data.user;
     } catch (error) {
