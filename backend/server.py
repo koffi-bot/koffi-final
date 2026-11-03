@@ -73,6 +73,16 @@ def normalize_phone(value: Optional[str]) -> Optional[str]:
     return digits or None
 
 
+async def find_user_by_email(email_key: str):
+    """Find an account across migrated and legacy records."""
+    return await db.users.find_one({
+        "$or": [
+            {"normalized_email": email_key},
+            {"email": {"$regex": f"^{re.escape(email_key)}$", "$options": "i"}},
+        ]
+    })
+
+
 async def ensure_user_identity_indexes():
     """Backfill canonical identifiers and enforce email uniqueness when safe.
 
@@ -132,7 +142,7 @@ async def register(user_data: UserCreate):
     email_key = normalize_email(str(user_data.email))
     phone_key = normalize_phone(user_data.phone)
 
-    if await db.users.find_one({"normalized_email": email_key}):
+    if await find_user_by_email(email_key):
         raise HTTPException(status_code=409, detail="Cette adresse e-mail possède déjà un compte. Connectez-vous plutôt que de créer un doublon.")
     user_dict = user_data.model_dump(exclude={"password"})
     user_dict["email"] = email_key
@@ -164,7 +174,7 @@ async def login(credentials: UserLogin):
     """Login user."""
     # Find the account using the same canonical email used at registration.
     email_key = normalize_email(str(credentials.email))
-    user_doc = await db.users.find_one({"normalized_email": email_key})
+    user_doc = await find_user_by_email(email_key)
     if not user_doc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
