@@ -430,7 +430,15 @@ async def create_review(review_data: ReviewCreate, current_user: dict = Depends(
     if existing_review:
         raise HTTPException(status_code=400, detail="You have already reviewed this product")
     
-    review = Review(**review_data.model_dump())
+    account = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password": 0})
+    if not account:
+        raise HTTPException(status_code=401, detail="Compte introuvable. Veuillez vous reconnecter.")
+    trusted_review_data = review_data.model_dump()
+    trusted_review_data.update({
+        "user_id": account["id"],
+        "user_name": account["full_name"],
+    })
+    review = Review(**trusted_review_data)
     
     doc = review.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
