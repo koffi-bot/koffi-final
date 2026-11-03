@@ -48,6 +48,14 @@ class OrderSecurityContractTests(unittest.TestCase):
         self.assertIn('"user_id": current_user["id"]', SERVER)
         self.assertIn("Stock insuffisant pour cette quantité", SERVER)
 
+    def test_legacy_duplicate_emails_do_not_block_startup(self):
+        self.assertIn("except DuplicateKeyError:", SERVER)
+        self.assertIn("duplicate legacy accounts require manual review", SERVER)
+
+    def test_order_persists_even_if_notifications_fail(self):
+        self.assertIn("Order was created, but administrator notification failed.", SERVER)
+        self.assertIn("Order was created, but the customer's cart could not be cleared.", SERVER)
+
     def test_admin_access_is_checked_against_database(self):
         self.assertIn("require_current_admin", SERVER)
         self.assertIn('user_doc.get("role") != "admin"', SERVER)
