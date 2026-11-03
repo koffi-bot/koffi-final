@@ -85,10 +85,12 @@ async def ensure_user_identity_indexes():
             email_values.append(email_key)
         if phone_key:
             phone_values.append(phone_key)
-        await db.users.update_one(
-            {"_id": item["_id"]},
-            {"$set": {"normalized_email": email_key, "normalized_phone": phone_key}}
-        )
+        identity_update = {"$set": {"normalized_email": email_key}}
+        if phone_key:
+            identity_update["$set"]["normalized_phone"] = phone_key
+        else:
+            identity_update["$unset"] = {"normalized_phone": ""}
+        await db.users.update_one({"_id": item["_id"]}, identity_update)
 
     duplicate_emails = [key for key, count in Counter(email_values).items() if count > 1]
     duplicate_phones = [key for key, count in Counter(phone_values).items() if count > 1]
