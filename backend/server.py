@@ -232,10 +232,13 @@ async def update_profile(
         update_operations = {"$set": update_data}
         if phone is not None and not normalize_phone(phone):
             update_operations["$unset"] = {"normalized_phone": ""}
-        await db.users.update_one(
-            {"id": current_user["id"]},
-            update_operations
-        )
+        try:
+            await db.users.update_one(
+                {"id": current_user["id"]},
+                update_operations
+            )
+        except DuplicateKeyError:
+            raise HTTPException(status_code=409, detail="Ce numéro de téléphone est déjà associé à un autre compte.")
     
     user_doc = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password": 0})
     if isinstance(user_doc.get('created_at'), str):
