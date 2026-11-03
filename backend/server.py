@@ -222,7 +222,6 @@ async def update_profile(
             update_data["normalized_phone"] = phone_key
         else:
             update_data["phone"] = None
-            update_data["normalized_phone"] = None
     if address: update_data["address"] = address
     if city: update_data["city"] = city
     if postal_code: update_data["postal_code"] = postal_code
@@ -230,9 +229,12 @@ async def update_profile(
     
     if update_data:
         update_data["updated_at"] = datetime.utcnow().isoformat()
+        update_operations = {"$set": update_data}
+        if phone is not None and not normalize_phone(phone):
+            update_operations["$unset"] = {"normalized_phone": ""}
         await db.users.update_one(
             {"id": current_user["id"]},
-            {"$set": update_data}
+            update_operations
         )
     
     user_doc = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password": 0})
