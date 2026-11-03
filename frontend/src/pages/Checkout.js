@@ -55,7 +55,7 @@ const Checkout = () => {
       const response = await orderAPI.createOrder(orderData);
       
       await Swal.fire({
-        title: 'Commande créée !',
+        title: 'Commande enregistrée !',
         html: `
           <p>Votre commande <strong>#${response.data.order_number}</strong> a été créée avec succès.</p>
           <p class="mt-4">Vous allez recevoir un email de confirmation.</p>
