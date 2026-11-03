@@ -74,36 +74,52 @@ def normalize_phone(value: Optional[str]) -> Optional[str]:
 
 
 async def ensure_user_identity_indexes():
-    """Backfill canonical identifiers, then enforce uniqueness when safe."""
-    users = await db.users.find({}, {"email": 1, "phone": 1}).to_list(50000)
+    """Backfill canonical identifiers and enforce email uniqueness when safe.
+
+    Phone numbers are normalized for lookup/diagnostics but are not unique:
+    family members may legitimately share one contact number.
+    """
     email_values = []
     phone_values = []
-    for item in users:
-        email_key = normalize_email(item.get("email", ""))
+    async for item in db.users.find({}, {"email": 1, "phone": 1}):
+        email_key = normalize_email(item.get("email") or "")
         phone_key = normalize_phone(item.get("phone"))
         if email_key:
             email_values.append(email_key)
         if phone_key:
             phone_values.append(phone_key)
-        identity_update = {"$set": {"normalized_email": email_key}}
+
+        identity_update = {"$set": {}}
+        if email_key:
+            identity_update["$set"]["normalized_email"] = email_key
+        else:
+            identity_update["$unset"] = {"normalized_email": ""}
         if phone_key:
             identity_update["$set"]["normalized_phone"] = phone_key
         else:
-            identity_update["$unset"] = {"normalized_phone": ""}
+            identity_update.setdefault("$unset", {})["normalized_phone"] = ""
+
         await db.users.update_one({"_id": item["_id"]}, identity_update)
 
     duplicate_emails = [key for key, count in Counter(email_values).items() if count > 1]
     duplicate_phones = [key for key, count in Counter(phone_values).items() if count > 1]
     if duplicate_emails:
-        logger.error("Existing duplicate email identities detected (%s groups); email unique index not created. No accounts were merged or deleted.", len(duplicate_emails))
-    else:
-        await db.users.create_index("normalized_email", unique=True, name="uniq_users_normalized_email")
-    if duplicate_phones:
-        logger.error("Existing duplicate phone identities detected (%s groups); phone unique index not created. No accounts were merged or deleted.", len(duplicate_phones))
+        logger.error(
+            "Existing duplicate email identities detected (%s groups); email unique index not created. No accounts were merged or deleted.",
+            len(duplicate_emails),
+        )
     else:
         await db.users.create_index(
-            "normalized_phone", unique=True, sparse=True,
-            name="uniq_users_normalized_phone"
+            "normalized_email",
+            unique=True,
+            sparse=True,
+            name="uniq_users_normalized_email",
+        )
+
+    if duplicate_phones:
+        logger.warning(
+            "Shared/duplicate phone numbers detected (%s groups). Phone numbers are not treated as unique account identifiers.",
+            len(duplicate_phones),
         )
 
 # ============================================
@@ -118,9 +134,6 @@ async def register(user_data: UserCreate):
 
     if await db.users.find_one({"normalized_email": email_key}):
         raise HTTPException(status_code=409, detail="Cette adresse e-mail possède déjà un compte. Connectez-vous plutôt que de créer un doublon.")
-    if phone_key and await db.users.find_one({"normalized_phone": phone_key}):
-        raise HTTPException(status_code=409, detail="Ce numéro de téléphone est déjà associé à un compte.")
-
     user_dict = user_data.model_dump(exclude={"password"})
     user_dict["email"] = email_key
     user = User(**user_dict)
@@ -211,17 +224,11 @@ async def update_profile(
     if full_name: update_data["full_name"] = full_name
     if phone is not None:
         phone_key = normalize_phone(phone)
+        update_data["phone"] = phone.strip() or None
         if phone_key:
-            existing_phone = await db.users.find_one({
-                "normalized_phone": phone_key,
-                "id": {"$ne": current_user["id"]}
-            })
-            if existing_phone:
-                raise HTTPException(status_code=409, detail="Ce numéro de téléphone est déjà associé à un autre compte.")
-            update_data["phone"] = phone.strip()
             update_data["normalized_phone"] = phone_key
         else:
-            update_data["phone"] = None
+            update_data["normalized_phone"] = None
     if address: update_data["address"] = address
     if city: update_data["city"] = city
     if postal_code: update_data["postal_code"] = postal_code
@@ -232,13 +239,10 @@ async def update_profile(
         update_operations = {"$set": update_data}
         if phone is not None and not normalize_phone(phone):
             update_operations["$unset"] = {"normalized_phone": ""}
-        try:
-            await db.users.update_one(
-                {"id": current_user["id"]},
-                update_operations
-            )
-        except DuplicateKeyError:
-            raise HTTPException(status_code=409, detail="Ce numéro de téléphone est déjà associé à un autre compte.")
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            update_operations
+        )
     
     user_doc = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password": 0})
     if isinstance(user_doc.get('created_at'), str):
