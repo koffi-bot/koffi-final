@@ -132,7 +132,8 @@ async def mark_all_notifications_read(current_user: dict = Depends(get_current_u
 async def register(user_data: UserCreate):
     """Register a new user."""
     # Check if user already exists
-    normalized_email = user_data.email.strip().lower()\n    existing_user = await db.users.find_one({"email": normalized_email})
+    normalized_email = user_data.email.strip().lower()
+    existing_user = await db.users.find_one({"email": normalized_email})
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -140,7 +141,8 @@ async def register(user_data: UserCreate):
         )
     
     # Create user
-    user_dict = user_data.model_dump(exclude={"password"})\n    user_dict["email"] = normalized_email
+    user_dict = user_data.model_dump(exclude={"password"})
+    user_dict["email"] = normalized_email
     user = User(**user_dict)
     
     # Hash password
