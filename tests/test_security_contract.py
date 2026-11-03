@@ -30,7 +30,8 @@ class SecurityContractTests(unittest.TestCase):
 
     def test_password_recovery_validation(self):
         self.assertIn("token: str = Field(min_length=32, max_length=256)", MODELS)
-        self.assertIn("new_password: str = Field(min_length=8, max_length=128)", MODELS)
+        self.assertIn("new_password: str = Field(min_length=8, max_length=72)", MODELS)
+        self.assertIn("len(value.encode(\"utf-8\")) > 72", MODELS)
 
     def test_password_recovery_frontend_wiring(self):
         self.assertIn('path="/forgot-password"', APP)
