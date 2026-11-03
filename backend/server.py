@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import asyncio
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -11,12 +12,15 @@ from datetime import datetime
 import shutil
 import uuid
 import re
+import secrets
+import hashlib
 from collections import Counter
 from pymongo.errors import DuplicateKeyError
 
 # Import local modules
 from models import (
     User, UserCreate, UserLogin, UserResponse, TokenResponse,
+    ForgotPasswordRequest, ResetPasswordRequest,
     Product, ProductCreate, Category, CategoryCreate,
     Review, ReviewCreate, CartItem, CartItemBase,
     WishlistItem, Order, OrderCreate,
@@ -131,6 +135,124 @@ async def ensure_user_identity_indexes():
             "Shared/duplicate phone numbers detected (%s groups). Phone numbers are not treated as unique account identifiers.",
             len(duplicate_phones),
         )
+
+# Password recovery: short-lived, single-use, hashed tokens.
+PASSWORD_RESET_TTL_MINUTES = 30
+PASSWORD_RESET_COOLDOWN_SECONDS = 60
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def send_password_reset_email(recipient: str, reset_url: str) -> None:
+    """Send recovery email using explicitly configured SMTP credentials."""
+    import smtplib
+    from email.message import EmailMessage
+
+    required = ["SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"]
+    missing = [key for key in required if not os.environ.get(key)]
+    if missing:
+        raise RuntimeError("Password recovery email is not configured: " + ", ".join(missing))
+
+    message = EmailMessage()
+    message["Subject"] = "Réinitialisation de votre mot de passe KOFFI SHOP"
+    message["From"] = os.environ["SMTP_FROM"]
+    message["To"] = recipient
+    message.set_content(
+        "Vous avez demandé à réinitialiser votre mot de passe KOFFI SHOP.\n\n"
+        f"Utilisez ce lien dans les 30 minutes : {reset_url}\n\n"
+        "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
+    )
+    port = int(os.environ["SMTP_PORT"])
+    if os.environ.get("SMTP_USE_SSL", "false").lower() == "true":
+        with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], port, timeout=15) as smtp:
+            smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(os.environ["SMTP_HOST"], port, timeout=15) as smtp:
+            smtp.starttls()
+            smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+            smtp.send_message(message)
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    """Always return the same public response to avoid account enumeration."""
+    generic = {"message": "Si cette adresse correspond à un compte, un lien de réinitialisation sera envoyé."}
+    email_key = normalize_email(str(request.email))
+    account = await find_user_by_email(email_key)
+    if not account:
+        return generic
+
+    now = datetime.utcnow()
+    last_request = account.get("password_reset_requested_at")
+    if isinstance(last_request, str):
+        try:
+            last_request = datetime.fromisoformat(last_request)
+        except ValueError:
+            last_request = None
+    if last_request and (now - last_request).total_seconds() < PASSWORD_RESET_COOLDOWN_SECONDS:
+        return generic
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_reset_token(raw_token)
+    expires_at = now + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)
+    await db.password_reset_tokens.delete_many({"user_id": account["id"]})
+    await db.password_reset_tokens.insert_one({
+        "token_hash": token_hash,
+        "user_id": account["id"],
+        "created_at": now,
+        "expires_at": expires_at,
+        "used": False,
+    })
+    await db.users.update_one(
+        {"id": account["id"]},
+        {"$set": {"password_reset_requested_at": now.isoformat()}}
+    )
+
+    frontend_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    if not frontend_url.startswith("https://"):
+        await db.password_reset_tokens.delete_one({"token_hash": token_hash})
+        logger.error("Password recovery disabled: FRONTEND_URL must be configured with HTTPS.")
+        return generic
+
+    reset_url = f"{frontend_url}/reset-password?token={raw_token}"
+    try:
+        await asyncio.to_thread(send_password_reset_email, account["email"], reset_url)
+    except Exception:
+        await db.password_reset_tokens.delete_one({"token_hash": token_hash})
+        logger.exception("Could not send password recovery email.")
+    return generic
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """Consume a valid reset token exactly once and replace the password hash."""
+    token_hash = hash_reset_token(request.token)
+    now = datetime.utcnow()
+    reset_record = await db.password_reset_tokens.find_one_and_delete({
+        "token_hash": token_hash,
+        "used": False,
+        "expires_at": {"$gt": now},
+    })
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Ce lien est invalide ou expiré. Demandez un nouveau lien.")
+
+    account = await db.users.find_one({"id": reset_record["user_id"]})
+    if not account:
+        raise HTTPException(status_code=400, detail="Ce lien est invalide ou expiré. Demandez un nouveau lien.")
+
+    await db.users.update_one(
+        {"id": account["id"]},
+        {"$set": {
+            "password": get_password_hash(request.new_password),
+            "updated_at": now.isoformat(),
+        }}
+    )
+    await db.password_reset_tokens.delete_many({"user_id": account["id"]})
+    return {"message": "Votre mot de passe a été modifié. Vous pouvez maintenant vous connecter."}
+
 
 # ============================================
 # AUTHENTICATION ROUTES
