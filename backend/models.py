@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -15,7 +15,14 @@ class UserBase(BaseModel):
     avatar: Optional[str] = None
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def password_fits_bcrypt(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Le mot de passe ne peut pas dépasser 72 octets.")
+        return value
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -28,7 +35,14 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str = Field(min_length=32, max_length=256)
-    new_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_fits_bcrypt(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Le mot de passe ne peut pas dépasser 72 octets.")
+        return value
 
 class User(UserBase):
     model_config = ConfigDict(extra="ignore")
