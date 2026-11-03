@@ -91,7 +91,8 @@ class ReviewBase(BaseModel):
     user_name: str
 
 class ReviewCreate(ReviewBase):
-    user_id: str
+    # Identity is supplied by the authenticated session, never trusted from the client.
+    user_id: Optional[str] = None
 
 class Review(ReviewBase):
     model_config = ConfigDict(extra="ignore")
@@ -144,9 +145,10 @@ class OrderBase(BaseModel):
     payment_phone: Optional[str] = None
 
 class OrderCreate(OrderBase):
-    user_id: str
-    user_email: str
-    user_name: str
+    # Identity is supplied by the authenticated session, never trusted from the client.
+    user_id: Optional[str] = None
+    user_email: Optional[str] = None
+    user_name: Optional[str] = None
 
 class Order(OrderBase):
     model_config = ConfigDict(extra="ignore")
