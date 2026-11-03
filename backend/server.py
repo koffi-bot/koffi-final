@@ -742,7 +742,7 @@ async def update_order_status(order_id: str, status: str, payment_status: Option
         update_data["payment_status"] = payment_status
 
     # Réserver atomiquement le droit de libérer le stock : une seule annulation gagne.
-    release_stock = status == "cancelled" and order.get("stock_reserved", True)
+    release_stock = status == "cancelled" and order.get("stock_reserved", False)
     if release_stock:
         update_data["stock_reserved"] = False
 
