@@ -5,9 +5,16 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-# Security configuration
-SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-change-in-production-koffi-shop-2025")
+# Charger le .env local avant de lire la configuration de sécurité.
+load_dotenv(Path(__file__).parent / ".env")
+
+# Aucun secret JWT de secours n'est autorisé.
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY or len(SECRET_KEY.encode("utf-8")) < 32:
+    raise RuntimeError("SECRET_KEY must be configured with at least 32 characters")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
