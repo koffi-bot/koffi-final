@@ -43,7 +43,18 @@ app = FastAPI(title="KOFFI SHOP API")
 
 @app.on_event("startup")
 async def ensure_user_email_unique_index():
-    await db.users.create_index([("email", 1)], unique=True, collation=Collation(locale="en", strength=2), name="uniq_users_email_case_insensitive")
+    try:
+        await db.users.create_index(
+            [("email", 1)],
+            unique=True,
+            collation=Collation(locale="en", strength=2),
+            name="uniq_users_email_case_insensitive",
+        )
+    except DuplicateKeyError:
+        # Existing duplicate emails must be audited; never block the storefront or merge accounts.
+        logger.exception(
+            "Unique email index was not created: duplicate legacy accounts require manual review."
+        )
 
 # Create upload directory
 UPLOAD_DIR = ROOT_DIR / "uploads"
@@ -737,8 +748,14 @@ async def create_order(order_data: OrderCreate, current_user: dict = Depends(get
         doc["updated_at"] = doc["updated_at"].isoformat()
         doc["stock_reserved"] = True
         await db.orders.insert_one(doc)
-        await notify_all_admins("new_order", "Nouvelle commande reçue", f"Commande #{order.order_number} de {user_doc.get('full_name', 'un client')}", "/admin/orders")
-        await db.cart.delete_many({"user_id": current_user["id"]})
+        try:
+            await notify_all_admins("new_order", "Nouvelle commande reçue", f"Commande #{order.order_number} de {user_doc.get('full_name', 'un client')}", "/admin/orders")
+        except Exception:
+            logger.exception("Order was created, but administrator notification failed.")
+        try:
+            await db.cart.delete_many({"user_id": current_user["id"]})
+        except Exception:
+            logger.exception("Order was created, but the customer's cart could not be cleared.")
         return order
     except Exception:
         # Annuler les réservations si la création de la commande échoue.
