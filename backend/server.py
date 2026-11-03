@@ -10,6 +10,9 @@ from typing import List, Optional
 from datetime import datetime
 import shutil
 import uuid
+import re
+from collections import Counter
+from pymongo.errors import DuplicateKeyError
 
 # Import local modules
 from models import (
@@ -56,6 +59,51 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def normalize_email(value: str) -> str:
+    """Return the canonical form used to identify an email account."""
+    return value.strip().casefold()
+
+
+def normalize_phone(value: Optional[str]) -> Optional[str]:
+    """Normalize phone formatting without guessing a country code."""
+    if not value:
+        return None
+    digits = re.sub(r"\\D", "", value)
+    return digits or None
+
+
+async def ensure_user_identity_indexes():
+    """Backfill canonical identifiers, then enforce uniqueness when safe."""
+    users = await db.users.find({}, {"email": 1, "phone": 1}).to_list(50000)
+    email_values = []
+    phone_values = []
+    for item in users:
+        email_key = normalize_email(item.get("email", ""))
+        phone_key = normalize_phone(item.get("phone"))
+        if email_key:
+            email_values.append(email_key)
+        if phone_key:
+            phone_values.append(phone_key)
+        await db.users.update_one(
+            {"_id": item["_id"]},
+            {"$set": {"normalized_email": email_key, "normalized_phone": phone_key}}
+        )
+
+    duplicate_emails = [key for key, count in Counter(email_values).items() if count > 1]
+    duplicate_phones = [key for key, count in Counter(phone_values).items() if count > 1]
+    if duplicate_emails:
+        logger.error("Existing duplicate email identities detected (%s groups); email unique index not created. No accounts were merged or deleted.", len(duplicate_emails))
+    else:
+        await db.users.create_index("normalized_email", unique=True, name="uniq_users_normalized_email")
+    if duplicate_phones:
+        logger.error("Existing duplicate phone identities detected (%s groups); phone unique index not created. No accounts were merged or deleted.", len(duplicate_phones))
+    else:
+        await db.users.create_index(
+            "normalized_phone", unique=True, sparse=True,
+            name="uniq_users_normalized_phone"
+        )
+
 # ============================================
 # AUTHENTICATION ROUTES
 # ============================================
@@ -63,29 +111,28 @@ logger = logging.getLogger(__name__)
 @api_router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate):
     """Register a new user."""
-    # Check if user already exists
-    existing_user = await db.users.find_one({"email": user_data.email})
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Create user
+    email_key = normalize_email(str(user_data.email))
+    phone_key = normalize_phone(user_data.phone)
+
+    if await db.users.find_one({"normalized_email": email_key}):
+        raise HTTPException(status_code=409, detail="Cette adresse e-mail possède déjà un compte. Connectez-vous plutôt que de créer un doublon.")
+    if phone_key and await db.users.find_one({"normalized_phone": phone_key}):
+        raise HTTPException(status_code=409, detail="Ce numéro de téléphone est déjà associé à un compte.")
+
     user_dict = user_data.model_dump(exclude={"password"})
+    user_dict["email"] = email_key
     user = User(**user_dict)
-    
-    # Hash password
-    hashed_password = get_password_hash(user_data.password)
-    
-    # Prepare document
     doc = user.model_dump()
-    doc["password"] = hashed_password
+    doc["normalized_email"] = email_key
+    doc["normalized_phone"] = phone_key
+    doc["password"] = get_password_hash(user_data.password)
     doc["created_at"] = doc["created_at"].isoformat()
     doc["updated_at"] = doc["updated_at"].isoformat()
-    
-    # Insert into database
-    await db.users.insert_one(doc)
+
+    try:
+        await db.users.insert_one(doc)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="Un compte existe déjà avec cette adresse e-mail ou ce numéro de téléphone. Connectez-vous.")
     
     # Create access token
     access_token = create_access_token(
@@ -100,8 +147,9 @@ async def register(user_data: UserCreate):
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
     """Login user."""
-    # Find user
-    user_doc = await db.users.find_one({"email": credentials.email})
+    # Find the account using the same canonical email used at registration.
+    email_key = normalize_email(str(credentials.email))
+    user_doc = await db.users.find_one({"normalized_email": email_key})
     if not user_doc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -550,8 +598,17 @@ async def remove_from_wishlist(product_id: str, current_user: dict = Depends(get
 
 @api_router.post("/orders", response_model=Order)
 async def create_order(order_data: OrderCreate, current_user: dict = Depends(get_current_user)):
-    """Create a new order."""
-    order = Order(**order_data.model_dump())
+    """Create an order attached to the authenticated account, never client-supplied identity."""
+    account = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password": 0})
+    if not account:
+        raise HTTPException(status_code=401, detail="Compte introuvable. Veuillez vous reconnecter.")
+    trusted_order_data = order_data.model_dump()
+    trusted_order_data.update({
+        "user_id": account["id"],
+        "user_email": account["email"],
+        "user_name": account["full_name"],
+    })
+    order = Order(**trusted_order_data)
     order.order_number = generate_order_number()
     
     doc = order.model_dump()
@@ -742,6 +799,15 @@ async def root():
 
 # Include the router in the main app
 app.include_router(api_router)
+
+
+@app.on_event("startup")
+async def startup_user_identity_indexes():
+    try:
+        await ensure_user_identity_indexes()
+    except Exception:
+        # Do not prevent the storefront from starting; surface the issue for operator review.
+        logger.exception("Could not prepare unique user identity indexes.")
 
 # CORS Configuration
 app.add_middleware(
