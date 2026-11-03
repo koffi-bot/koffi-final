@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await authAPI.login({ email, password });
+      const response = await authAPI.login({ email: email.trim().toLowerCase(), password });
       localStorage.setItem('token', response.data.access_token);
       saveUser(response.data.user);
       toast.success('Connexion réussie !');
