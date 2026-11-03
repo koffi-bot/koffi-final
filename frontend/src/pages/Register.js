@@ -11,7 +11,8 @@ const Register = () => {
     phone: '',
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);\n  const submittingRef = useRef(false);
+  const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
