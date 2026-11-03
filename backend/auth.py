@@ -5,14 +5,20 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
+from motor.motor_asyncio import AsyncIOMotorClient
 
 # Security configuration
-SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-change-in-production-koffi-shop-2025")
+DEFAULT_SECRET_KEY = "your-secret-key-change-in-production-koffi-shop-2025"
+SECRET_KEY = os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
+if os.environ.get("RENDER", "").lower() == "true" and SECRET_KEY == DEFAULT_SECRET_KEY:
+    raise RuntimeError("SECRET_KEY must be configured in Render before starting KOFFI SHOP.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
+_auth_client = AsyncIOMotorClient(os.environ.get('MONGO_URL', 'mongodb://localhost:27017'))
+_auth_db = _auth_client[os.environ.get('DB_NAME', 'koffi_shop')]
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
@@ -55,7 +61,17 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
         )
-    return {"id": user_id, "email": payload.get("email"), "role": payload.get("role")}
+    user = await _auth_db.users.find_one(
+        {"id": user_id},
+        {"_id": 0, "id": 1, "email": 1, "role": 1, "token_version": 1},
+    )
+    if not user or int(payload.get("ver", 0)) != int(user.get("token_version", 0)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expirée. Veuillez vous reconnecter.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return {"id": user["id"], "email": user.get("email"), "role": user.get("role")}
 
 async def get_current_admin(current_user: dict = Depends(get_current_user)):
     """Verify that the current user is an admin."""
