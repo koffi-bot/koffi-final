@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { contactAPI } from '../services/api';
+import { contactAPI, newsletterAPI } from '../services/api';
 import { toast } from 'sonner';
 import { Mail, Phone, MapPin, Send } from 'lucide-react';
 
 const Contact = () => {
   const [loading, setLoading] = useState(false);
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterLoading, setNewsletterLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -24,9 +26,27 @@ const Contact = () => {
       toast.success('Message envoyé avec succès !');
       setFormData({ name: '', email: '', subject: '', message: '' });
     } catch (error) {
-      toast.error('Erreur lors de l\'envoi');
+      toast.error("Erreur lors de l'envoi");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNewsletterSubmit = async (e) => {
+    e.preventDefault();
+    if (!newsletterEmail.trim()) {
+      toast.error('Veuillez entrer votre email');
+      return;
+    }
+    setNewsletterLoading(true);
+    try {
+      await newsletterAPI.subscribe(newsletterEmail.trim());
+      toast.success('Inscription réussie à la newsletter !');
+      setNewsletterEmail('');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Échec de l'inscription");
+    } finally {
+      setNewsletterLoading(false);
     }
   };
 
@@ -48,8 +68,7 @@ const Contact = () => {
                 </div>
                 <div>
                   <h3 className="text-white font-semibold mb-2">Email</h3>
-                  <p className="text-gray-400">hoodkoffi@gmail.com</p>
-                  <p className="text-gray-400">hoodkoffi@gmail.com</p>
+                  <a href="mailto:hoodkoffi@gmail.com" className="text-gray-400 hover:text-primary transition">hoodkoffi@gmail.com</a>
                 </div>
               </div>
             </div>
@@ -61,7 +80,7 @@ const Contact = () => {
                 </div>
                 <div>
                   <h3 className="text-white font-semibold mb-2">Téléphone</h3>
-                  <p className="text-gray-400">+243 962 748 779</p>
+                  <a href="tel:+2438041274" className="text-gray-400 hover:text-primary transition">+243 8041274</a>
                   <p className="text-gray-400">7/7: 24/24</p>
                 </div>
               </div>
@@ -87,68 +106,48 @@ const Contact = () => {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-white font-medium mb-2">Nom</label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                  className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  data-testid="contact-name-input"
-                />
+                <input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" data-testid="contact-name-input" />
               </div>
-
               <div>
                 <label className="block text-white font-medium mb-2">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                  className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  data-testid="contact-email-input"
-                />
+                <input type="email" name="email" value={formData.email} onChange={handleChange} required className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" data-testid="contact-email-input" />
               </div>
-
               <div>
                 <label className="block text-white font-medium mb-2">Sujet</label>
-                <input
-                  type="text"
-                  name="subject"
-                  value={formData.subject}
-                  onChange={handleChange}
-                  required
-                  className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  data-testid="contact-subject-input"
-                />
+                <input type="text" name="subject" value={formData.subject} onChange={handleChange} required className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" data-testid="contact-subject-input" />
               </div>
-
               <div>
                 <label className="block text-white font-medium mb-2">Message</label>
-                <textarea
-                  name="message"
-                  value={formData.message}
-                  onChange={handleChange}
-                  required
-                  rows="5"
-                  className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  data-testid="contact-message-input"
-                />
+                <textarea name="message" value={formData.message} onChange={handleChange} required rows="5" className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" data-testid="contact-message-input" />
               </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-primary text-dark font-bold py-3 rounded-lg hover:bg-primary-light transition disabled:opacity-50 flex items-center justify-center gap-2"
-                data-testid="contact-submit-btn"
-              >
+              <button type="submit" disabled={loading} className="w-full bg-primary text-dark font-bold py-3 rounded-lg hover:bg-primary-light transition disabled:opacity-50 flex items-center justify-center gap-2" data-testid="contact-submit-btn">
                 <Send className="w-5 h-5" />
                 {loading ? 'Envoi...' : 'Envoyer le message'}
               </button>
             </form>
           </div>
         </div>
+
+        {/* Newsletter: uniquement sur la page Contact */}
+        <section className="max-w-3xl mx-auto mt-12 bg-dark-light rounded-xl p-8 text-center">
+          <h2 className="text-2xl font-bold text-white mb-3 font-poppins">Newsletter KOFFI SHOP</h2>
+          <p className="text-gray-400 mb-6">Recevez nos actualités et nos offres directement par email.</p>
+          <form onSubmit={handleNewsletterSubmit} className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="email"
+              value={newsletterEmail}
+              onChange={(e) => setNewsletterEmail(e.target.value)}
+              placeholder="Votre adresse email"
+              aria-label="Votre adresse email pour la newsletter"
+              required
+              disabled={newsletterLoading}
+              className="flex-1 min-w-0 bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <button type="submit" disabled={newsletterLoading} className="bg-primary text-dark font-semibold px-6 py-3 rounded-lg hover:bg-primary-light transition disabled:opacity-50">
+              {newsletterLoading ? 'Inscription...' : "S'inscrire"}
+            </button>
+          </form>
+        </section>
       </div>
     </div>
   );
