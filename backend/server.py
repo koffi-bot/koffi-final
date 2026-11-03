@@ -69,7 +69,7 @@ def normalize_phone(value: Optional[str]) -> Optional[str]:
     """Normalize phone formatting without guessing a country code."""
     if not value:
         return None
-    digits = re.sub(r"\\D", "", value)
+    digits = re.sub(r"\D", "", value)
     return digits or None
 
 
