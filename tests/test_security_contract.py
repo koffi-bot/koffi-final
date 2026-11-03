@@ -54,6 +54,16 @@ class SecurityContractTests(unittest.TestCase):
         self.assertIn('"user_email": account["email"]', SERVER)
         self.assertIn('"user_name": account["full_name"]', SERVER)
 
+    def test_password_reset_revokes_existing_sessions(self):
+        self.assertIn('"$inc": {"token_version": 1}', SERVER)
+        self.assertIn('"ver": int(user_doc.get("token_version", 0))', SERVER)
+        self.assertIn('payload.get("ver", 0)', AUTH)
+        self.assertIn('_auth_db.users.find_one', AUTH)
+
+    def test_bcrypt_password_byte_limit(self):
+        self.assertIn('password: str = Field(min_length=8, max_length=72)', MODELS)
+        self.assertIn('len(value.encode("utf-8")) > 72', MODELS)
+
     def test_no_demo_admin_password_seed(self):
         seed = (ROOT / "backend" / "seed_data.py").read_text(encoding="utf-8-sig")
         self.assertNotIn('admin@koffishop.com', seed)
