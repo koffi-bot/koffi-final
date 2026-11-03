@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, User, Eye, EyeOff, Phone } from 'lucide-react';
@@ -11,7 +11,7 @@ const Register = () => {
     phone: '',
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);\n  const submittingRef = useRef(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
