@@ -17,6 +17,10 @@ import hashlib
 from collections import Counter
 from pymongo.errors import DuplicateKeyError
 
+# Load backend environment before importing auth.py, because it reads SECRET_KEY at import time.
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
 # Import local modules
 from models import (
     User, UserCreate, UserLogin, UserResponse, TokenResponse,
