@@ -6,7 +6,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
 from pathlib import Path
-from auth import get_password_hash
 from datetime import datetime
 import uuid
 
@@ -21,28 +20,7 @@ db = client[os.environ.get('DB_NAME', 'koffi_shop')]
 async def seed_data():
     """Seed initial data"""
     
-    # Create admin user
-    admin_exists = await db.users.find_one({"email": "admin@koffishop.com"})
-    if not admin_exists:
-        admin = {
-            "id": str(uuid.uuid4()),
-            "email": "admin@koffishop.com",
-            "password": get_password_hash("admin123"),
-            "full_name": "Admin KOFFI",
-            "role": "admin",
-            "phone": "+243 999 999 999",
-            "address": "123 Admin Street",
-            "city": "Kinshasa",
-            "postal_code": "12345",
-            "country": "RDC",
-            "avatar": None,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
-        }
-        await db.users.insert_one(admin)
-        print("✅ Admin user created: admin@koffishop.com / admin123")
-    
-    # Create categories
+    # Admin accounts must be created and managed explicitly; never seed demo credentials.\n\n    # Create categories
     categories_data = [
         {
             "id": "cat-1",
