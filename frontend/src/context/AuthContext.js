@@ -21,16 +21,30 @@ export const AuthProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const saveUser = (userData) => {
+    setUser(userData);
+    localStorage.setItem('koffi_user', JSON.stringify(userData));
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('koffi_user');
+    setUser(null);
+  };
+
   const checkAuth = async () => {
     const token = localStorage.getItem('token');
+    const cachedUser = localStorage.getItem('koffi_user');
+    if (cachedUser) {
+      try { setUser(JSON.parse(cachedUser)); } catch (_) { localStorage.removeItem('koffi_user'); }
+    }
     if (token) {
       try {
         const response = await authAPI.getMe();
-        setUser(response.data);
+        saveUser(response.data);
       } catch (error) {
         console.error('Auth check failed:', error);
-        localStorage.removeItem('token');
-        setUser(null);
+        if ([401, 403].includes(error.response?.status)) clearSession();
       }
     }
     setLoading(false);
@@ -40,7 +54,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authAPI.login({ email, password });
       localStorage.setItem('token', response.data.access_token);
-      setUser(response.data.user);
+      saveUser(response.data.user);
       toast.success('Connexion réussie !');
       return response.data.user;
     } catch (error) {
@@ -65,8 +79,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
+    clearSession();
     toast.success('Déconnexion réussie');
   };
 
