@@ -969,9 +969,18 @@ app.include_router(api_router)
 async def startup_user_identity_indexes():
     try:
         await ensure_user_identity_indexes()
+        await db.password_reset_tokens.create_index(
+            "token_hash", unique=True, name="uniq_password_reset_token_hash"
+        )
+        await db.password_reset_tokens.create_index(
+            "expires_at", expireAfterSeconds=0, name="ttl_password_reset_expiry"
+        )
+        await db.password_reset_tokens.create_index(
+            "user_id", name="password_reset_user_lookup"
+        )
     except Exception:
         # Do not prevent the storefront from starting; surface the issue for operator review.
-        logger.exception("Could not prepare unique user identity indexes.")
+        logger.exception("Could not prepare account identity or password recovery indexes.")
 
 # CORS Configuration
 app.add_middleware(
