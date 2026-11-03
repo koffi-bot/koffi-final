@@ -21,14 +21,17 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     try {
-      await register(formData);
+      await register({ ...formData, email: formData.email.trim().toLowerCase() });
       navigate('/');
     } catch (error) {
       console.error('Registration failed:', error);
       // Error already handled in AuthContext with toast
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
