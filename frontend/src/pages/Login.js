@@ -104,11 +104,16 @@ const Login = () => {
             </p>
           </div>
 
-          {/* Demo Credentials */}
+          {/* Connexion instructions */}
           <div className="mt-6 p-4 bg-dark rounded-lg border border-dark-lighter">
-            <p className="text-sm text-gray-400 mb-2">Compte de démonstration Admin :</p>
-            <p className="text-sm text-white">Email: <span className="text-primary">ton email.com</span></p>
-            <p className="text-sm text-white">Mot de passe: <span className="text-primary">ton mot de passe</span></p>
+            <p className="text-sm font-semibold text-primary mb-2">Comment vous connecter</p>
+            <p className="text-sm leading-relaxed text-gray-300">
+              Saisissez l’adresse e-mail et le mot de passe associés à votre compte KOFFI SHOP.
+              Si vous n’avez pas encore de compte, choisissez « S’inscrire ».
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              L’accès administrateur utilise les identifiants qui vous ont été communiqués en privé.
+            </p>
           </div>
         </div>
 
