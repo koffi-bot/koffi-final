@@ -252,7 +252,7 @@ async def reset_password(request: ResetPasswordRequest):
         {"$set": {
             "password": get_password_hash(request.new_password),
             "updated_at": now.isoformat(),
-        }}
+        }, "$inc": {"token_version": 1}}
     )
     await db.password_reset_tokens.delete_many({"user_id": account["id"]})
     return {"message": "Votre mot de passe a été modifié. Vous pouvez maintenant vous connecter."}
@@ -276,6 +276,7 @@ async def register(user_data: UserCreate):
     doc = user.model_dump()
     doc["normalized_email"] = email_key
     doc["normalized_phone"] = phone_key
+    doc["token_version"] = 0
     doc["password"] = get_password_hash(user_data.password)
     doc["created_at"] = doc["created_at"].isoformat()
     doc["updated_at"] = doc["updated_at"].isoformat()
@@ -287,7 +288,7 @@ async def register(user_data: UserCreate):
     
     # Create access token
     access_token = create_access_token(
-        data={"sub": user.id, "email": user.email, "role": user.role}
+        data={"sub": user.id, "email": user.email, "role": user.role, "ver": 0}
     )
     
     return TokenResponse(
@@ -324,7 +325,7 @@ async def login(credentials: UserLogin):
     
     # Create access token
     access_token = create_access_token(
-        data={"sub": user.id, "email": user.email, "role": user.role}
+        data={"sub": user.id, "email": user.email, "role": user.role, "ver": int(user_doc.get("token_version", 0))}
     )
     
     return TokenResponse(
