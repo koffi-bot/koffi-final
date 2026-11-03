@@ -226,9 +226,6 @@ async def seed_data():
             print(f"✅ Product created: {product['name']}")
     
     print("\n🎉 Database seeded successfully!")
-    print("\n📝 Admin credentials:")
-    print("   Email: admin@koffishop.com")
-    print("   Password: admin123")
 
 if __name__ == "__main__":
     asyncio.run(seed_data())
