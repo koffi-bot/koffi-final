@@ -6,14 +6,18 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
+from pathlib import Path
+from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv
 
-# Security configuration
-DEFAULT_SECRET_KEY = "your-secret-key-change-in-production-koffi-shop-2025"
+# Charger le .env local avant de lire la configuration de sécurité.
+load_dotenv(Path(__file__).parent / ".env")
+
+# Aucun secret JWT de secours n'est autorisé.
 SECRET_KEY = os.environ.get("SECRET_KEY")
 if not SECRET_KEY or len(SECRET_KEY.encode("utf-8")) < 32:
-    if os.environ.get("RENDER", "").lower() == "true":
-        raise RuntimeError("SECRET_KEY must be configured in Render with at least 32 bytes.")
-    SECRET_KEY = DEFAULT_SECRET_KEY
+    raise RuntimeError("SECRET_KEY must be configured with at least 32 characters")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
@@ -63,16 +67,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
         )
-    user = await _auth_db.users.find_one(
-        {"id": user_id},
-        {"_id": 0, "id": 1, "email": 1, "role": 1, "token_version": 1},
-    )
+    user = await _auth_db.users.find_one({"id": user_id}, {"_id": 0, "id": 1, "email": 1, "role": 1, "token_version": 1})
     if not user or int(payload.get("ver", 0)) != int(user.get("token_version", 0)):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session expirée. Veuillez vous reconnecter.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expirée. Veuillez vous reconnecter.", headers={"WWW-Authenticate": "Bearer"})
     return {"id": user["id"], "email": user.get("email"), "role": user.get("role")}
 
 async def get_current_admin(current_user: dict = Depends(get_current_user)):
