@@ -2,16 +2,16 @@ name: KOFFI SHOP PR5 validation
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, integration/pr5-pr6]
   push:
-    branches: [hardening-orders-stock-admin]
+    branches: [hardening-orders-stock-admin, integration/pr5-pr6]
 
 jobs:
   backend-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Check Python syntax
@@ -27,8 +27,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
