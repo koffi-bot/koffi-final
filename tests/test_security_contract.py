@@ -28,6 +28,13 @@ class SecurityContractTests(unittest.TestCase):
         self.assertIn("SMTP_HOST", SERVER)
         self.assertIn('expires_at', SERVER)
 
+    def test_smtp_configuration_template(self):
+        env_example = (ROOT / "backend" / ".env.example").read_text(encoding="utf-8-sig")
+        for setting in ("FRONTEND_URL", "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM", "SMTP_USE_SSL"):
+            self.assertIn(setting, env_example)
+        self.assertIn("SMTP_HOST", SERVER)
+        self.assertIn("SMTP_PASSWORD", SERVER)
+
     def test_password_recovery_validation(self):
         self.assertIn("token: str = Field(min_length=32, max_length=256)", MODELS)
         self.assertIn("new_password: str = Field(min_length=8, max_length=72)", MODELS)
