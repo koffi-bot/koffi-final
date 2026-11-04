@@ -122,7 +122,7 @@ async def ensure_user_identity_indexes():
     duplicate_phones = [key for key, count in Counter(phone_values).items() if count > 1]
     if duplicate_emails:
         logger.error(
-            "Existing duplicate email identities detected (%s groups); email unique index not created. No accounts were merged or deleted.",
+            "duplicate legacy accounts require manual review (%s groups); email unique index not created. No accounts were merged or deleted.",
             len(duplicate_emails),
         )
     else:
