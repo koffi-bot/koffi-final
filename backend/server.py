@@ -4,18 +4,27 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import asyncio
+import re
+import secrets
+import hashlib
+from collections import Counter
 import logging
 from pathlib import Path
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import shutil
 import uuid
 from pymongo.errors import DuplicateKeyError
-from pymongo.collation import Collation
+
+# Load .env before auth.py reads SECRET_KEY.
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
 
 # Import local modules
 from models import (
     User, UserCreate, UserLogin, UserResponse, TokenResponse,
+    ForgotPasswordRequest, ResetPasswordRequest,
     Product, ProductCreate, Category, CategoryCreate,
     Review, ReviewCreate, CartItem, CartItemBase,
     WishlistItem, Order, OrderCreate,
@@ -41,21 +50,6 @@ db = client[os.environ.get('DB_NAME', 'koffi_shop')]
 # Create the main app
 app = FastAPI(title="KOFFI SHOP API")
 
-@app.on_event("startup")
-async def ensure_user_email_unique_index():
-    try:
-        await db.users.create_index(
-            [("email", 1)],
-            unique=True,
-            collation=Collation(locale="en", strength=2),
-            name="uniq_users_email_case_insensitive",
-        )
-    except DuplicateKeyError:
-        # Existing duplicate emails must be audited; never block the storefront or merge accounts.
-        logger.exception(
-            "Unique email index was not created: duplicate legacy accounts require manual review."
-        )
-
 # Create upload directory
 UPLOAD_DIR = ROOT_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -72,6 +66,197 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+def normalize_email(value: str) -> str:
+    """Return the canonical form used to identify an email account."""
+    return value.strip().casefold()
+
+
+def normalize_phone(value: Optional[str]) -> Optional[str]:
+    """Normalize phone formatting without guessing a country code."""
+    if not value:
+        return None
+    digits = re.sub(r"\D", "", value)
+    return digits or None
+
+
+async def find_user_by_email(email_key: str):
+    """Find an account across migrated and legacy records."""
+    return await db.users.find_one({
+        "$or": [
+            {"normalized_email": email_key},
+            {"email": {"$regex": f"^{re.escape(email_key)}$", "$options": "i"}},
+        ]
+    })
+
+
+async def ensure_user_identity_indexes():
+    """Backfill canonical identifiers and enforce email uniqueness when safe.
+
+    Phone numbers are normalized for lookup/diagnostics but are not unique:
+    family members may legitimately share one contact number.
+    """
+    email_values = []
+    phone_values = []
+    async for item in db.users.find({}, {"email": 1, "phone": 1}):
+        email_key = normalize_email(item.get("email") or "")
+        phone_key = normalize_phone(item.get("phone"))
+        if email_key:
+            email_values.append(email_key)
+        if phone_key:
+            phone_values.append(phone_key)
+
+        identity_update = {"$set": {}}
+        if email_key:
+            identity_update["$set"]["normalized_email"] = email_key
+        else:
+            identity_update["$unset"] = {"normalized_email": ""}
+        if phone_key:
+            identity_update["$set"]["normalized_phone"] = phone_key
+        else:
+            identity_update.setdefault("$unset", {})["normalized_phone"] = ""
+
+        await db.users.update_one({"_id": item["_id"]}, identity_update)
+
+    duplicate_emails = [key for key, count in Counter(email_values).items() if count > 1]
+    duplicate_phones = [key for key, count in Counter(phone_values).items() if count > 1]
+    if duplicate_emails:
+        logger.error(
+            "Existing duplicate email identities detected (%s groups); email unique index not created. No accounts were merged or deleted.",
+            len(duplicate_emails),
+        )
+    else:
+        await db.users.create_index(
+            "normalized_email",
+            unique=True,
+            sparse=True,
+            name="uniq_users_normalized_email",
+        )
+
+    if duplicate_phones:
+        logger.warning(
+            "Shared/duplicate phone numbers detected (%s groups). Phone numbers are not treated as unique account identifiers.",
+            len(duplicate_phones),
+        )
+
+# Password recovery: short-lived, single-use, hashed tokens.
+PASSWORD_RESET_TTL_MINUTES = 30
+PASSWORD_RESET_COOLDOWN_SECONDS = 60
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def send_password_reset_email(recipient: str, reset_url: str) -> None:
+    """Send recovery email using explicitly configured SMTP credentials."""
+    import smtplib
+    from email.message import EmailMessage
+
+    required = ["SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"]
+    missing = [key for key in required if not os.environ.get(key)]
+    if missing:
+        raise RuntimeError("Password recovery email is not configured: " + ", ".join(missing))
+
+    message = EmailMessage()
+    message["Subject"] = "Réinitialisation de votre mot de passe KOFFI SHOP"
+    message["From"] = os.environ["SMTP_FROM"]
+    message["To"] = recipient
+    message.set_content(
+        "Vous avez demandé à réinitialiser votre mot de passe KOFFI SHOP.\n\n"
+        f"Utilisez ce lien dans les 30 minutes : {reset_url}\n\n"
+        "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
+    )
+    port = int(os.environ["SMTP_PORT"])
+    if os.environ.get("SMTP_USE_SSL", "false").lower() == "true":
+        with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], port, timeout=15) as smtp:
+            smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(os.environ["SMTP_HOST"], port, timeout=15) as smtp:
+            smtp.starttls()
+            smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+            smtp.send_message(message)
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    """Always return the same public response to avoid account enumeration."""
+    generic = {"message": "Si cette adresse correspond à un compte, un lien de réinitialisation sera envoyé."}
+    email_key = normalize_email(str(request.email))
+    account = await find_user_by_email(email_key)
+    if not account:
+        return generic
+
+    now = datetime.utcnow()
+    last_request = account.get("password_reset_requested_at")
+    if isinstance(last_request, str):
+        try:
+            last_request = datetime.fromisoformat(last_request)
+        except ValueError:
+            last_request = None
+    if last_request and (now - last_request).total_seconds() < PASSWORD_RESET_COOLDOWN_SECONDS:
+        return generic
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_reset_token(raw_token)
+    expires_at = now + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)
+    await db.password_reset_tokens.delete_many({"user_id": account["id"]})
+    await db.password_reset_tokens.insert_one({
+        "token_hash": token_hash,
+        "user_id": account["id"],
+        "created_at": now,
+        "expires_at": expires_at,
+        "used": False,
+    })
+    await db.users.update_one(
+        {"id": account["id"]},
+        {"$set": {"password_reset_requested_at": now.isoformat()}}
+    )
+
+    frontend_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    if not frontend_url.startswith("https://"):
+        await db.password_reset_tokens.delete_one({"token_hash": token_hash})
+        logger.error("Password recovery disabled: FRONTEND_URL must be configured with HTTPS.")
+        return generic
+
+    reset_url = f"{frontend_url}/reset-password?token={raw_token}"
+    try:
+        await asyncio.to_thread(send_password_reset_email, account["email"], reset_url)
+    except Exception:
+        await db.password_reset_tokens.delete_one({"token_hash": token_hash})
+        logger.exception("Could not send password recovery email.")
+    return generic
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """Consume a valid reset token exactly once and replace the password hash."""
+    token_hash = hash_reset_token(request.token)
+    now = datetime.utcnow()
+    reset_record = await db.password_reset_tokens.find_one_and_delete({
+        "token_hash": token_hash,
+        "used": False,
+        "expires_at": {"$gt": now},
+    })
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Ce lien est invalide ou expiré. Demandez un nouveau lien.")
+
+    account = await db.users.find_one({"id": reset_record["user_id"]})
+    if not account:
+        raise HTTPException(status_code=400, detail="Ce lien est invalide ou expiré. Demandez un nouveau lien.")
+
+    await db.users.update_one(
+        {"id": account["id"]},
+        {"$set": {
+            "password": get_password_hash(request.new_password),
+            "updated_at": now.isoformat(),
+        }, "$inc": {"token_version": 1}}
+    )
+    await db.password_reset_tokens.delete_many({"user_id": account["id"]})
+    return {"message": "Votre mot de passe a été modifié. Vous pouvez maintenant vous connecter."}
+
+
 
 async def require_current_admin(current_user: dict = Depends(get_current_user)):
     """Revalide le rôle administrateur depuis MongoDB à chaque requête."""
@@ -135,6 +320,85 @@ async def mark_all_notifications_read(current_user: dict = Depends(get_current_u
     )
     return {"message": "Notifications marquées comme lues"}
 
+@api_router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    """Always return the same public response to avoid account enumeration."""
+    generic = {"message": "Si cette adresse correspond à un compte, un lien de réinitialisation sera envoyé."}
+    email_key = normalize_email(str(request.email))
+    account = await find_user_by_email(email_key)
+    if not account:
+        return generic
+
+    now = datetime.utcnow()
+    last_request = account.get("password_reset_requested_at")
+    if isinstance(last_request, str):
+        try:
+            last_request = datetime.fromisoformat(last_request)
+        except ValueError:
+            last_request = None
+    if last_request and (now - last_request).total_seconds() < PASSWORD_RESET_COOLDOWN_SECONDS:
+        return generic
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_reset_token(raw_token)
+    expires_at = now + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)
+    await db.password_reset_tokens.delete_many({"user_id": account["id"]})
+    await db.password_reset_tokens.insert_one({
+        "token_hash": token_hash,
+        "user_id": account["id"],
+        "created_at": now,
+        "expires_at": expires_at,
+        "used": False,
+    })
+    await db.users.update_one(
+        {"id": account["id"]},
+        {"$set": {"password_reset_requested_at": now.isoformat()}}
+    )
+
+    frontend_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    if not frontend_url.startswith("https://"):
+        await db.password_reset_tokens.delete_one({"token_hash": token_hash})
+        logger.error("Password recovery disabled: FRONTEND_URL must be configured with HTTPS.")
+        return generic
+
+    reset_url = f"{frontend_url}/reset-password?token={raw_token}"
+    try:
+        await asyncio.to_thread(send_password_reset_email, account["email"], reset_url)
+    except Exception:
+        await db.password_reset_tokens.delete_one({"token_hash": token_hash})
+        logger.exception("Could not send password recovery email.")
+    return generic
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """Consume a valid reset token exactly once and replace the password hash."""
+    token_hash = hash_reset_token(request.token)
+    now = datetime.utcnow()
+    reset_record = await db.password_reset_tokens.find_one_and_delete({
+        "token_hash": token_hash,
+        "used": False,
+        "expires_at": {"$gt": now},
+    })
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Ce lien est invalide ou expiré. Demandez un nouveau lien.")
+
+    account = await db.users.find_one({"id": reset_record["user_id"]})
+    if not account:
+        raise HTTPException(status_code=400, detail="Ce lien est invalide ou expiré. Demandez un nouveau lien.")
+
+    await db.users.update_one(
+        {"id": account["id"]},
+        {"$set": {
+            "password": get_password_hash(request.new_password),
+            "updated_at": now.isoformat(),
+        }, "$inc": {"token_version": 1}}
+    )
+    await db.password_reset_tokens.delete_many({"user_id": account["id"]})
+    return {"message": "Votre mot de passe a été modifié. Vous pouvez maintenant vous connecter."}
+
+
+
 # ============================================
 # AUTHENTICATION ROUTES
 # ============================================
@@ -142,38 +406,30 @@ async def mark_all_notifications_read(current_user: dict = Depends(get_current_u
 @api_router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate):
     """Register a new user."""
-    # Check if user already exists
-    normalized_email = user_data.email.strip().lower()
-    existing_user = await db.users.find_one({"email": normalized_email})
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Create user
+    email_key = normalize_email(str(user_data.email))
+    phone_key = normalize_phone(user_data.phone)
+
+    if await find_user_by_email(email_key):
+        raise HTTPException(status_code=409, detail="Cette adresse e-mail possède déjà un compte. Connectez-vous plutôt que de créer un doublon.")
     user_dict = user_data.model_dump(exclude={"password"})
-    user_dict["email"] = normalized_email
+    user_dict["email"] = email_key
     user = User(**user_dict)
-    
-    # Hash password
-    hashed_password = get_password_hash(user_data.password)
-    
-    # Prepare document
     doc = user.model_dump()
-    doc["password"] = hashed_password
+    doc["normalized_email"] = email_key
+    doc["normalized_phone"] = phone_key
+    doc["token_version"] = 0
+    doc["password"] = get_password_hash(user_data.password)
     doc["created_at"] = doc["created_at"].isoformat()
     doc["updated_at"] = doc["updated_at"].isoformat()
-    
-    # Insert into database
+
     try:
         await db.users.insert_one(doc)
     except DuplicateKeyError:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Un compte existe déjà avec cet e-mail. Connectez-vous.")
+        raise HTTPException(status_code=409, detail="Un compte existe déjà avec cette adresse e-mail ou ce numéro de téléphone. Connectez-vous.")
     
     # Create access token
     access_token = create_access_token(
-        data={"sub": user.id, "email": user.email, "role": user.role}
+        data={"sub": user.id, "email": user.email, "role": user.role, "ver": 0}
     )
     
     return TokenResponse(
@@ -184,9 +440,9 @@ async def register(user_data: UserCreate):
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
     """Login user."""
-    # Find user
-    normalized_email = str(credentials.email).strip().lower()
-    user_doc = await db.users.find_one({"email": normalized_email}, collation=Collation(locale="en", strength=2))
+    # Find the account using the same canonical email used at registration.
+    email_key = normalize_email(str(credentials.email))
+    user_doc = await find_user_by_email(email_key)
     if not user_doc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -210,7 +466,7 @@ async def login(credentials: UserLogin):
     
     # Create access token
     access_token = create_access_token(
-        data={"sub": user.id, "email": user.email, "role": user.role}
+        data={"sub": user.id, "email": user.email, "role": user.role, "ver": int(user_doc.get("token_version", 0))}
     )
     
     return TokenResponse(
@@ -244,7 +500,13 @@ async def update_profile(
     """Update user profile."""
     update_data = {}
     if full_name: update_data["full_name"] = full_name
-    if phone: update_data["phone"] = phone
+    if phone is not None:
+        phone_key = normalize_phone(phone)
+        update_data["phone"] = phone.strip() or None
+        if phone_key:
+            update_data["normalized_phone"] = phone_key
+        else:
+            update_data["normalized_phone"] = None
     if address: update_data["address"] = address
     if city: update_data["city"] = city
     if postal_code: update_data["postal_code"] = postal_code
@@ -252,9 +514,12 @@ async def update_profile(
     
     if update_data:
         update_data["updated_at"] = datetime.utcnow().isoformat()
+        update_operations = {"$set": update_data}
+        if phone is not None and not normalize_phone(phone):
+            update_operations["$unset"] = {"normalized_phone": ""}
         await db.users.update_one(
             {"id": current_user["id"]},
-            {"$set": update_data}
+            update_operations
         )
     
     user_doc = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password": 0})
@@ -488,7 +753,15 @@ async def create_review(review_data: ReviewCreate, current_user: dict = Depends(
     if existing_review:
         raise HTTPException(status_code=400, detail="You have already reviewed this product")
     
-    review = Review(**review_data.model_dump())
+    account = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password": 0})
+    if not account:
+        raise HTTPException(status_code=401, detail="Compte introuvable. Veuillez vous reconnecter.")
+    trusted_review_data = review_data.model_dump()
+    trusted_review_data.update({
+        "user_id": account["id"],
+        "user_name": account["full_name"],
+    })
+    review = Review(**trusted_review_data)
     
     doc = review.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
@@ -1033,6 +1306,24 @@ async def root():
 
 # Include the router in the main app
 app.include_router(api_router)
+
+
+@app.on_event("startup")
+async def startup_user_identity_indexes():
+    try:
+        await ensure_user_identity_indexes()
+        await db.password_reset_tokens.create_index(
+            "token_hash", unique=True, name="uniq_password_reset_token_hash"
+        )
+        await db.password_reset_tokens.create_index(
+            "expires_at", expireAfterSeconds=0, name="ttl_password_reset_expiry"
+        )
+        await db.password_reset_tokens.create_index(
+            "user_id", name="password_reset_user_lookup"
+        )
+    except Exception:
+        # Do not prevent the storefront from starting; surface the issue for operator review.
+        logger.exception("Could not prepare account identity or password recovery indexes.")
 
 # CORS Configuration
 app.add_middleware(
