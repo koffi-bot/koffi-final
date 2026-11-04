@@ -110,6 +110,17 @@ const Login = () => {
             </p>
           </div>
 
+          {/* Connexion instructions */}
+          <div className="mt-6 p-4 bg-dark rounded-lg border border-dark-lighter">
+            <p className="text-sm font-semibold text-primary mb-2">Comment vous connecter</p>
+            <p className="text-sm leading-relaxed text-gray-300">
+              Saisissez l’adresse e-mail et le mot de passe associés à votre compte KOFFI SHOP.
+              Si vous n’avez pas encore de compte, choisissez « S’inscrire ».
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              L’accès administrateur utilise les identifiants qui vous ont été communiqués en privé.
+            </p>
+          </div>
         </div>
 
         {/* Back to Home */}
