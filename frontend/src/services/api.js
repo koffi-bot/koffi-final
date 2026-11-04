@@ -90,6 +90,13 @@ export const adminStatsAPI = {
   getMessages: () => api.get('/admin/messages'),
 };
 
+// Notifications API
+export const notificationAPI = {
+  getAll: () => api.get('/notifications'),
+  markRead: (id) => api.put(`/notifications/${id}/read`),
+  markAllRead: () => api.put('/notifications/read-all'),
+};
+
 // Newsletter API
 export const newsletterAPI = {
   subscribe: (email) => api.post('/newsletter/subscribe', { email }),
