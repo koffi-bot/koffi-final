@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, User, Eye, EyeOff, Phone } from 'lucide-react';
@@ -12,6 +12,7 @@ const Register = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -21,14 +22,17 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     try {
-      await register(formData);
+      await register({ ...formData, email: formData.email.trim().toLowerCase() });
       navigate('/');
     } catch (error) {
       console.error('Registration failed:', error);
       // Error already handled in AuthContext with toast
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };

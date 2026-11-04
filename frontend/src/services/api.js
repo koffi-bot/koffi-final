@@ -28,6 +28,8 @@ export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   getMe: () => api.get('/auth/me'),
   updateProfile: (data) => api.put('/auth/profile', data),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token, new_password) => api.post('/auth/reset-password', { token, new_password }),
 };
 
 // Category API
@@ -86,6 +88,13 @@ export const adminStatsAPI = {
   getStats: () => api.get('/admin/stats'),
   getAllUsers: () => api.get('/admin/users'),
   getMessages: () => api.get('/admin/messages'),
+};
+
+// Notifications API
+export const notificationAPI = {
+  getAll: () => api.get('/notifications'),
+  markRead: (id) => api.put(`/notifications/${id}/read`),
+  markAllRead: () => api.put('/notifications/read-all'),
 };
 
 // Newsletter API

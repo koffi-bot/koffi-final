@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
-from typing import Optional, List
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
+from typing import Optional, List, Literal
 from datetime import datetime
 import uuid
 
@@ -15,7 +15,30 @@ class UserBase(BaseModel):
     avatar: Optional[str] = None
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def password_fits_bcrypt(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Le mot de passe ne peut pas dépasser 72 octets.")
+        return value
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    new_password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("new_password")
+    @classmethod
+    def reset_password_fits_bcrypt(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Le mot de passe ne peut pas dépasser 72 octets.")
+        return value
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -91,7 +114,8 @@ class ReviewBase(BaseModel):
     user_name: str
 
 class ReviewCreate(ReviewBase):
-    user_id: str
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
 
 class Review(ReviewBase):
     model_config = ConfigDict(extra="ignore")
@@ -102,7 +126,7 @@ class Review(ReviewBase):
 # Cart Models
 class CartItemBase(BaseModel):
     product_id: str
-    quantity: int = 1
+    quantity: int = Field(default=1, ge=1, le=99)
     size: Optional[str] = None
     color: Optional[str] = None
 
@@ -143,10 +167,17 @@ class OrderBase(BaseModel):
     payment_method: str  # orange_money, mpesa, airtel_money, card
     payment_phone: Optional[str] = None
 
-class OrderCreate(OrderBase):
-    user_id: str
-    user_email: str
-    user_name: str
+class OrderCreate(BaseModel):
+    # Les informations de prix et d'identité sont établies par le serveur,
+    # jamais par le navigateur.
+    items: List[CartItemBase] = Field(min_length=1, max_length=50)
+    shipping_address: str = Field(min_length=3, max_length=500)
+    shipping_city: str = Field(min_length=2, max_length=120)
+    shipping_postal_code: str = Field(min_length=1, max_length=30)
+    shipping_country: str = Field(min_length=2, max_length=100)
+    phone: str = Field(min_length=6, max_length=30)
+    payment_method: Literal["orange_money", "mpesa", "airtel_money", "card"]
+    payment_phone: Optional[str] = Field(default=None, max_length=30)
 
 class Order(OrderBase):
     model_config = ConfigDict(extra="ignore")

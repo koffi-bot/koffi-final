@@ -41,33 +41,21 @@ const Checkout = () => {
     setLoading(true);
 
     try {
-      const subtotal = getCartTotal();
-      const shipping = subtotal >= 100 ? 0 : 10;
-      const total = subtotal + shipping;
-
       const orderData = {
-        user_id: user.id,
-        user_email: user.email,
-        user_name: user.full_name,
+        // Le serveur relit les prix, l'identité et le stock depuis MongoDB.
         items: cart.map((item) => ({
           product_id: item.product_id,
-          product_name: item.product?.name || '',
-          product_image: item.product?.images?.[0] || '',
           quantity: item.quantity,
-          price: item.product?.price || 0,
           size: item.size,
           color: item.color,
         })),
-        subtotal,
-        shipping,
-        total,
         ...formData,
       };
 
       const response = await orderAPI.createOrder(orderData);
       
       await Swal.fire({
-        title: 'Commande créée !',
+        title: 'Commande enregistrée !',
         html: `
           <p>Votre commande <strong>#${response.data.order_number}</strong> a été créée avec succès.</p>
           <p class="mt-4">Vous allez recevoir un email de confirmation.</p>

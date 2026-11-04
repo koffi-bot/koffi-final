@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { Search, ShoppingCart, User, Menu, X, Heart, LogOut } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -49,6 +50,8 @@ const Header = () => {
             >
               <Search className="w-6 h-6" />
             </button>
+
+            {isAuthenticated && <NotificationBell />}
 
             {/* Wishlist */}
             {isAuthenticated && (

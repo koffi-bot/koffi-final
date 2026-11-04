@@ -3,6 +3,22 @@ import { cartAPI } from '../services/api';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
 
+const getCartErrorMessage = (error) => {
+  const detail = error?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    const messages = {
+      'Product not found': 'Ce produit n’est plus disponible.',
+      'Stock insuffisant pour ce produit': 'Stock insuffisant pour ce produit.',
+      'Quantité supérieure au stock disponible': 'La quantité demandée dépasse le stock disponible.',
+    };
+    return messages[detail] || detail;
+  }
+  if (!error?.response) return 'Connexion au serveur impossible. Vérifiez votre connexion puis réessayez.';
+  if (error.response.status === 401) return 'Connectez-vous pour ajouter ce produit à votre panier.';
+  if (error.response.status >= 500) return 'Le service rencontre un problème. Réessayez dans quelques instants.';
+  return 'Impossible d’ajouter ce produit au panier. Vérifiez sa disponibilité puis réessayez.';
+};
+
 const CartContext = createContext(null);
 
 export const useCart = () => {
