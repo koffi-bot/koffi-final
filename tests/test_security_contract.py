@@ -57,11 +57,10 @@ class SecurityContractTests(unittest.TestCase):
         self.assertNotIn("uniq_users_normalized_phone", SERVER)
 
     def test_order_and_review_identity_from_session(self):
-        # Orders use the authenticated current_user plus the MongoDB account record;
-        # reviews use the same account record. Client-provided identity is never trusted.
-        self.assertIn('"user_id": current_user["id"]', SERVER)
-        self.assertIn('"user_email": user_doc["email"]', SERVER)
-        self.assertIn('"user_name": user_doc["full_name"]', SERVER)
+        # Orders use the authenticated current_user and MongoDB account; reviews use account.
+        self.assertIn('user_id=current_user["id"]', SERVER)
+        self.assertIn('user_email=user_doc["email"]', SERVER)
+        self.assertIn('user_name=user_doc["full_name"]', SERVER)
         self.assertIn('"user_id": account["id"]', SERVER)
         self.assertIn('"user_name": account["full_name"]', SERVER)
 
