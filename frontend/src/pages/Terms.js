@@ -88,7 +88,7 @@ const Terms = () => {
               <br />
               Email: legal@koffishop.com
               <br />
-              Téléphone: +243 999 999 999
+              Téléphone: +243 838 041 274
             </p>
           </section>
 
