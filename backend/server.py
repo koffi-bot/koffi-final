@@ -767,7 +767,10 @@ async def add_to_cart(item_data: CartItemBase, current_user: dict = Depends(get_
         if isinstance(product.get('updated_at'), str):
             product['updated_at'] = datetime.fromisoformat(product['updated_at'])
         existing_item['product'] = {k: v for k, v in product.items() if k != '_id'}
-        
+        # MongoDB documents contain an ObjectId that FastAPI cannot serialize.
+        # The update succeeds in MongoDB, but returning this ObjectId caused
+        # the browser to show an error even though the cart item was saved.
+        existing_item.pop("_id", None)
         return existing_item
     else:
         # Create new cart item
@@ -775,6 +778,9 @@ async def add_to_cart(item_data: CartItemBase, current_user: dict = Depends(get_
         doc = cart_item.model_dump()
         doc["created_at"] = doc["created_at"].isoformat()
         await db.cart.insert_one(doc)
+        # insert_one adds MongoDB's ObjectId to doc; remove it before returning
+        # the response so the successful add is not reported as an HTTP error.
+        doc.pop("_id", None)
         
         # Enrich with product data
         if isinstance(product.get('created_at'), str):
