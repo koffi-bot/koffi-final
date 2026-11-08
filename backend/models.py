@@ -161,7 +161,7 @@ class OrderBase(BaseModel):
     total: float
     shipping_address: str
     shipping_city: str
-    shipping_postal_code: str
+    shipping_postal_code: Optional[str] = None
     shipping_country: str
     phone: str
     payment_method: str  # orange_money, mpesa, airtel_money, card
@@ -173,7 +173,7 @@ class OrderCreate(BaseModel):
     items: List[CartItemBase] = Field(min_length=1, max_length=50)
     shipping_address: str = Field(min_length=3, max_length=500)
     shipping_city: str = Field(min_length=2, max_length=120)
-    shipping_postal_code: str = Field(min_length=1, max_length=30)
+    shipping_postal_code: Optional[str] = Field(default=None, max_length=30)
     shipping_country: str = Field(min_length=2, max_length=100)
     phone: str = Field(min_length=6, max_length=30)
     payment_method: Literal["orange_money", "mpesa", "airtel_money", "card"]
