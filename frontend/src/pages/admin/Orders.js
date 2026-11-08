@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { adminOrderAPI } from '../../services/api';
 import { toast } from 'sonner';
-import { Eye, Search } from 'lucide-react';
+import { Eye, Search, Printer } from 'lucide-react';
+import { printInvoice } from '../../utils/printInvoice';
 
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -145,6 +146,14 @@ const AdminOrders = () => {
               </div>
             </div>
 
+            <button
+              type="button"
+              onClick={() => printInvoice(order)}
+              className="mb-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-dark hover:opacity-90"
+            >
+              <Printer className="h-4 w-4" /> Voir / télécharger la facture
+            </button>
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="min-w-0">
                 <label className="mb-1 block text-xs text-gray-400">Statut</label>
@@ -261,6 +270,15 @@ const AdminOrders = () => {
                       className="rounded-lg p-2 text-primary hover:bg-dark focus:outline-none focus:ring-2 focus:ring-primary"
                     >
                       <Eye className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => printInvoice(order)}
+                      aria-label={`Imprimer la facture ${order.order_number}`}
+                      title="Voir / télécharger la facture"
+                      className="ml-1 rounded-lg p-2 text-primary hover:bg-dark focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <Printer className="h-5 w-5" />
                     </button>
                   </td>
                 </tr>
@@ -383,13 +401,20 @@ const AdminOrders = () => {
                 </div>
               </section>
 
-              <div className="flex justify-end">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={() => setSelectedOrder(null)}
-                  className="w-full rounded-lg bg-primary px-5 py-3 font-semibold text-black transition hover:opacity-90 sm:w-auto"
+                  className="w-full rounded-lg border border-dark-lighter px-5 py-3 font-semibold text-white transition hover:bg-dark sm:w-auto"
                 >
                   Fermer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printInvoice(selectedOrder)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 font-semibold text-black transition hover:opacity-90 sm:w-auto"
+                >
+                  <Printer className="h-4 w-4" /> Voir / télécharger la facture
                 </button>
               </div>
             </div>
