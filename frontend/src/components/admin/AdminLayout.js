@@ -32,10 +32,14 @@ const AdminLayout = () => {
     <div className="min-h-screen bg-dark md:flex">
       <aside className="w-full bg-dark-light border-b border-dark-lighter md:fixed md:inset-y-0 md:left-0 md:z-40 md:flex md:w-64 md:flex-col md:border-b-0 md:border-r">
         <div className="flex items-center justify-between gap-3 border-b border-dark-lighter px-4 py-3 sm:px-6 md:block md:py-6">
-          <h2 className="text-xl font-bold font-poppins sm:text-2xl">
+          <Link
+            to="/"
+            aria-label="Retour à la page d'accueil KOFFI SHOP"
+            className="text-xl font-bold font-poppins sm:text-2xl transition-opacity hover:opacity-80"
+          >
             <span className="text-white">KOFFI</span>
             <span className="text-primary"> ADMIN</span>
-          </h2>
+          </Link>
           <div className="md:hidden"><NotificationBell /></div>
           <button
             type="button"
