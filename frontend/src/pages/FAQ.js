@@ -31,7 +31,7 @@ const FAQ = () => {
     },
     {
       question: 'Comment contacter le service client ?',
-      answer: 'Vous pouvez nous contacter par email à contact@koffishop.com, par téléphone au +243 999 999 999 ou via notre formulaire de contact. Nous répondons du lundi au vendredi de 9h à 18h.'
+      answer: 'Vous pouvez nous contacter par email à contact@koffishop.com, par téléphone au +243 838 041 274 ou via notre formulaire de contact. Nous répondons du lundi au vendredi de 9h à 18h.'
     },
     {
       question: 'Les produits sont-ils authentiques ?',
