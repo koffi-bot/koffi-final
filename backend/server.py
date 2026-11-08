@@ -783,7 +783,9 @@ async def add_to_cart(item_data: CartItemBase, current_user: dict = Depends(get_
             product['updated_at'] = datetime.fromisoformat(product['updated_at'])
         doc['product'] = {k: v for k, v in product.items() if k != '_id'}
         
-        return doc
+        # PyMongo adds an ObjectId to doc during insert_one; never expose it in the API response.
+        response_doc = {k: v for k, v in doc.items() if k != '_id'}
+        return response_doc
 
 @api_router.put("/cart/{item_id}")
 async def update_cart_item(item_id: str, quantity: int, current_user: dict = Depends(get_current_user)):
