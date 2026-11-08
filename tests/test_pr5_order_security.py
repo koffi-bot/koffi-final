@@ -23,6 +23,18 @@ class OrderSecurityContractTests(unittest.TestCase):
         self.assertNotIn("user_id: user.id", CHECKOUT)
         self.assertNotIn("total: getCartTotal()", CHECKOUT)
 
+    def test_postal_code_is_optional_in_checkout_and_backend(self):
+        order_create = MODELS[MODELS.index("class OrderCreate"):MODELS.index("class Order(")]
+        self.assertIn("shipping_postal_code: Optional[str] = Field(default=None", order_create)
+        self.assertIn("Code postal (facultatif)", CHECKOUT)
+        self.assertNotIn('name="shipping_postal_code"\\n                      value={formData.shipping_postal_code}\\n                      onChange={handleChange}\\n                      required', CHECKOUT)
+        self.assertIn("formData.shipping_postal_code.trim() || null", CHECKOUT)
+
+    def test_cart_post_response_removes_mongodb_object_id(self):
+        cart_route = SERVER[SERVER.index('@api_router.post("/cart")'):SERVER.index('@api_router.put("/cart/{item_id}")')]
+        self.assertIn('existing_item.pop("_id", None)', cart_route)
+        self.assertIn('doc.pop("_id", None)', cart_route)
+
     def test_order_model_rejects_client_identity_and_prices(self):
         self.assertIn("class OrderCreate(BaseModel)", MODELS)
         self.assertIn("items: List[CartItemBase]", MODELS)
