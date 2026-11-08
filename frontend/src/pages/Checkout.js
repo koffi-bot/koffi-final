@@ -50,6 +50,7 @@ const Checkout = () => {
           color: item.color,
         })),
         ...formData,
+        shipping_postal_code: formData.shipping_postal_code.trim() || null,
       };
 
       const response = await orderAPI.createOrder(orderData);
@@ -116,13 +117,13 @@ const Checkout = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-white mb-2">Code postal</label>
+                    <label className="block text-white mb-2">Code postal (facultatif)</label>
                     <input
                       type="text"
                       name="shipping_postal_code"
                       value={formData.shipping_postal_code}
                       onChange={handleChange}
-                      required
+                      placeholder="Facultatif"
                       className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
