@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { orderAPI } from '../services/api';
-import { Package, Eye } from 'lucide-react';
+import { Package, Printer } from 'lucide-react';
+import { printInvoice } from '../utils/printInvoice';
 
 const Orders = () => {
   const [orders, setOrders] = useState([]);
@@ -160,6 +161,15 @@ const Orders = () => {
                     {order.payment_status === 'failed' && 'Échoué'}
                   </span>
                 </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => printInvoice(order)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-semibold text-dark transition hover:opacity-90 sm:w-auto"
+                >
+                  <Printer className="h-4 w-4" /> Voir / télécharger la facture
+                </button>
               </div>
             </div>
           ))}
