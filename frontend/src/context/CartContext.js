@@ -87,7 +87,7 @@ export const CartProvider = ({ children }) => {
       toast.success('Produit ajouté au panier');
     } catch (error) {
       console.error('Failed to add to cart:', error);
-      toast.error('Échec de l\'ajout au panier');
+      toast.error(getCartErrorMessage(error));
     }
   };
 
