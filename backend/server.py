@@ -746,7 +746,7 @@ async def add_to_cart(item_data: CartItemBase, current_user: dict = Depends(get_
         "product_id": item_data.product_id,
         "size": item_data.size,
         "color": item_data.color
-    })
+    }, {"_id": 0})
     
     if existing_item:
         # Update quantity
