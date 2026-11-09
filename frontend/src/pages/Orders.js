@@ -37,7 +37,8 @@ const Orders = () => {
 
   const getStatusLabel = (status) => {
     const labels = {
-      pending: 'En attente',
+      pending: 'En attente de confirmation',
+      confirmed: 'Validée',
       processing: 'En traitement',
       shipped: 'Expédiée',
       delivered: 'Livrée',
@@ -147,6 +148,7 @@ const Orders = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400">Méthode de paiement:</span>
                   <span className="text-white font-semibold">
+                    {order.payment_method === 'cash_on_delivery' && 'Paiement physique à la livraison'}
                     {order.payment_method === 'orange_money' && 'Orange Money'}
                     {order.payment_method === 'mpesa' && 'M-Pesa'}
                     {order.payment_method === 'airtel_money' && 'Airtel Money'}
@@ -157,7 +159,7 @@ const Orders = () => {
                   <span className="text-gray-400">État du paiement:</span>
                   <span className={`font-semibold ${getPaymentStatusClass(order.payment_status)}`}>
                     {order.payment_status === 'paid' && 'Payé'}
-                    {order.payment_status === 'pending' && 'En attente'}
+                    {order.payment_status === 'pending' && (order.payment_method === 'cash_on_delivery' ? 'À régler à la livraison' : 'En attente')}
                     {order.payment_status === 'failed' && 'Échoué'}
                   </span>
                 </div>
@@ -168,7 +170,7 @@ const Orders = () => {
                   onClick={() => printInvoice(order)}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-semibold text-dark transition hover:opacity-90 sm:w-auto"
                 >
-                  <Printer className="h-4 w-4" /> Voir / télécharger la facture
+                  <Printer className="h-4 w-4" /> Voir le bon de réservation
                 </button>
               </div>
             </div>
