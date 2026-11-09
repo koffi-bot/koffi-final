@@ -27,6 +27,7 @@ const Orders = () => {
   const getStatusColor = (status) => {
     const colors = {
       pending: 'text-yellow-400',
+      confirmed: 'text-green-400',
       processing: 'text-blue-400',
       shipped: 'text-purple-400',
       delivered: 'text-green-400',
@@ -42,7 +43,7 @@ const Orders = () => {
       processing: 'En traitement',
       shipped: 'Expédiée',
       delivered: 'Livrée',
-      cancelled: 'Annulée',
+      cancelled: 'Refusée',
     };
     return labels[status] || status;
   };
