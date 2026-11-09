@@ -38,6 +38,7 @@ const AdminLayout = () => {
             aria-label="Retour à la page d'accueil KOFFI SHOP"
             className="text-xl font-bold font-poppins sm:text-2xl transition-opacity hover:opacity-80"
           >
+            <img src="/koffi-logo.svg" alt="" aria-hidden="true" className="mr-2 inline-block h-9 w-9 align-middle object-contain" />
             <span className="text-white">KOFFI</span>
             <span className="text-primary"> ADMIN</span>
           </Link>
