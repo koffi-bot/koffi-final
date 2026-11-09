@@ -61,6 +61,22 @@ class OrderSecurityContractTests(unittest.TestCase):
         self.assertIn('user_doc.get("role") != "admin"', SERVER)
         self.assertIn("require_current_admin_or_collaborator", SERVER)
 
+    def test_admin_order_deletion_is_restricted_and_restores_reserved_stock(self):
+        self.assertIn('@api_router.delete("/admin/orders/{order_id}")', SERVER)
+        self.assertIn('current_admin: dict = Depends(require_current_admin)', SERVER)
+        self.assertIn('confirm_order_number.strip() != order_number', SERVER)
+        self.assertIn('current_status not in {"pending", "confirmed", "cancelled"}', SERVER)
+        self.assertIn('order.get("payment_status") == "paid"', SERVER)
+        self.assertIn('{"$inc": {"stock": int(item.get("quantity", 0))}}', SERVER)
+        self.assertIn('"action": "delete_order"', SERVER)
+
+    def test_admin_dashboard_exposes_confirmed_delete_action(self):
+        orders_page = (ROOT / "frontend" / "src" / "pages" / "admin" / "Orders.js").read_text(encoding="utf-8")
+        self.assertIn("handleDeleteOrder", orders_page)
+        self.assertIn("adminOrderAPI.deleteOrder", orders_page)
+        self.assertIn("Supprimer la commande et sa facture", orders_page)
+        self.assertIn("deleteOrder: (id, confirmOrderNumber)", API)
+
     def test_frontend_uses_order_and_notification_apis(self):
         self.assertIn("createOrder: (data)", API)
         self.assertIn("notificationAPI", API)
