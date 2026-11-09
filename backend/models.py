@@ -176,7 +176,7 @@ class OrderCreate(BaseModel):
     shipping_postal_code: Optional[str] = Field(default=None, max_length=30)
     shipping_country: str = Field(min_length=2, max_length=100)
     phone: str = Field(min_length=6, max_length=30)
-    payment_method: Literal["orange_money", "mpesa", "airtel_money", "card"]
+    payment_method: Literal["cash_on_delivery"]
     payment_phone: Optional[str] = Field(default=None, max_length=30)
 
 class Order(OrderBase):
