@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, Outlet, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LayoutDashboard, Package, ShoppingBag, Users, MessageSquare, LogOut } from 'lucide-react';
+import { LayoutDashboard, Package, Tags, ShoppingBag, Users, MessageSquare, LogOut } from 'lucide-react';
 import NotificationBell from '../layout/NotificationBell';
 
 const AdminLayout = () => {
@@ -23,6 +23,7 @@ const AdminLayout = () => {
   const navItems = [
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/products', icon: Package, label: 'Produits' },
+    { path: '/admin/categories', icon: Tags, label: 'Catégories' },
     { path: '/admin/orders', icon: ShoppingBag, label: 'Commandes' },
     { path: '/admin/customers', icon: Users, label: 'Clients' },
     { path: '/admin/messages', icon: MessageSquare, label: 'Messages' },
