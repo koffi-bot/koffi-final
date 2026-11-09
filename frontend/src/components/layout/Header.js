@@ -23,9 +23,9 @@ const Header = () => {
         {/* Top Bar */}
         <div className="flex items-center justify-between py-4">
           {/* Logo */}
-          <Link to="/" className="text-2xl font-bold font-poppins">
-            <span className="text-white">KOFFI</span>
-            <span className="text-primary"> SHOP</span>
+          <Link to="/" aria-label="KOFFI SHOP — Accueil" className="inline-flex items-center gap-2 text-2xl font-bold font-poppins">
+            <img src="/koffi-logo.svg" alt="" aria-hidden="true" className="h-10 w-10 shrink-0 object-contain" />
+            <span><span className="text-white">KOFFI</span><span className="text-primary"> SHOP</span></span>
           </Link>
 
           {/* Search Bar - Desktop */}
