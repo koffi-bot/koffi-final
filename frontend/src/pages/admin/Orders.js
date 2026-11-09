@@ -168,7 +168,7 @@ const AdminOrders = () => {
                   <option value="processing">En traitement</option>
                   <option value="shipped">Expédiée</option>
                   <option value="delivered">Livrée</option>
-                  <option value="cancelled">Annulée</option>
+                  <option value="cancelled">Refusée</option>
                 </select>
               </div>
 
@@ -176,14 +176,16 @@ const AdminOrders = () => {
                 <label className="mb-1 block text-xs text-gray-400">Paiement physique</label>
                 <select
                   value={order.payment_status}
+                  disabled={order.payment_method !== 'cash_on_delivery'}
                   onChange={(e) =>
                     handleStatusUpdate(order.id, order.status, e.target.value)
                   }
-                  className={`w-full rounded px-2 py-2 text-sm font-semibold text-white ${getPaymentStatusBg(order.payment_status)} focus:outline-none focus:ring-2 focus:ring-primary`}
+                  aria-label="État du paiement physique"
+                  className={`w-full rounded px-2 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70 ${getPaymentStatusBg(order.payment_status)} focus:outline-none focus:ring-2 focus:ring-primary`}
                 >
-                  <option value="pending">En attente</option>
-                  <option value="paid">Payé</option>
-                  <option value="failed">Échoué</option>
+                  <option value="pending">À régler à la livraison</option>
+                  <option value="paid">Reçu physiquement</option>
+                  {order.payment_status === 'failed' && <option value="failed">Échec historique</option>}
                 </select>
               </div>
             </div>
@@ -255,14 +257,16 @@ const AdminOrders = () => {
                   <td className="p-4">
                     <select
                       value={order.payment_status}
+                      disabled={order.payment_method !== 'cash_on_delivery'}
                       onChange={(e) =>
                         handleStatusUpdate(order.id, order.status, e.target.value)
                       }
-                      className={`${getPaymentStatusBg(order.payment_status)} rounded px-3 py-2 text-sm font-semibold text-white focus:outline-none`}
+                      aria-label="État du paiement physique"
+                      className={`${getPaymentStatusBg(order.payment_status)} rounded px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70 focus:outline-none`}
                     >
-                      <option value="pending">En attente</option>
-                      <option value="paid">Payé</option>
-                      <option value="failed">Échoué</option>
+                      <option value="pending">À régler à la livraison</option>
+                      <option value="paid">Reçu physiquement</option>
+                      {order.payment_status === 'failed' && <option value="failed">Échec historique</option>}
                     </select>
                   </td>
                   <td className="p-4 text-right">
