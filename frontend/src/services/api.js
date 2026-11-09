@@ -83,6 +83,7 @@ export const orderAPI = {
 export const adminOrderAPI = {
   getAllOrders: () => api.get('/admin/orders'),
   updateOrderStatus: (id, status, paymentStatus) => api.put(`/admin/orders/${id}/status`, null, { params: { status, payment_status: paymentStatus } }),
+  deleteOrder: (id, confirmOrderNumber) => api.delete(`/admin/orders/${id}`, { params: { confirm_order_number: confirmOrderNumber } }),
 };
 
 // Admin Stats API

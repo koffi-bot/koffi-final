@@ -1134,6 +1134,49 @@ async def update_order_status(order_id: str, status: str, payment_status: Option
             await db.products.update_one({"id": item["product_id"]}, {"$inc": {"stock": item["quantity"]}})
     return {"message": "Commande mise à jour"}
 
+
+@api_router.delete("/admin/orders/{order_id}")
+async def delete_admin_order(
+    order_id: str,
+    confirm_order_number: str,
+    current_admin: dict = Depends(require_current_admin),
+):
+    """Delete an unpaid test/order record after exact order-number confirmation."""
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Commande introuvable")
+    order_number = str(order.get("order_number", ""))
+    if not order_number or confirm_order_number.strip() != order_number:
+        raise HTTPException(status_code=400, detail="Confirmation incorrecte : saisissez le numéro exact de la commande.")
+    current_status = order.get("status", "pending")
+    if current_status not in {"pending", "confirmed", "cancelled"}:
+        raise HTTPException(status_code=409, detail="Suppression bloquée : seules les commandes en attente, validées ou annulées peuvent être supprimées. Les commandes en traitement, expédiées ou livrées doivent être conservées.")
+    if order.get("payment_status") == "paid":
+        raise HTTPException(status_code=409, detail="Suppression bloquée : une commande payée doit être conservée dans l'historique.")
+    result = await db.orders.delete_one({
+        "id": order_id, "status": current_status, "payment_status": {"$ne": "paid"}
+    })
+    if result.deleted_count != 1:
+        raise HTTPException(status_code=409, detail="La commande a changé entre-temps. Rechargez la liste avant de réessayer.")
+    if order.get("stock_reserved", False):
+        for item in order.get("items", []):
+            await db.products.update_one(
+                {"id": item["product_id"]},
+                {"$inc": {"stock": int(item.get("quantity", 0))}}
+            )
+    try:
+        await db.admin_audit_logs.insert_one({
+            "id": str(uuid.uuid4()), "action": "delete_order",
+            "order_number": order_number, "order_id": order_id,
+            "user_id": order.get("user_id"), "total": order.get("total"),
+            "previous_status": current_status, "deleted_by": current_admin.get("id"),
+            "deleted_at": datetime.utcnow().isoformat(),
+            "reason": "Suppression administrative confirmée",
+        })
+    except Exception:
+        logger.exception("Order %s was deleted but its audit record could not be saved", order_number)
+    return {"message": f"Commande #{order_number} et son bon/facture associé supprimés."}
+
 # ============================================
 # ADMIN STATS
 # ============================================

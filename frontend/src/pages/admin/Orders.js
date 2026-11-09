@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { adminOrderAPI } from '../../services/api';
 import { toast } from 'sonner';
-import { Eye, Search, Printer } from 'lucide-react';
+import { Eye, Search, Printer, Trash2 } from 'lucide-react';
 import { printInvoice } from '../../utils/printInvoice';
 
 const AdminOrders = () => {
@@ -41,6 +41,29 @@ const AdminOrders = () => {
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Erreur lors de la mise à jour');
+    }
+  };
+
+  const handleDeleteOrder = async (order) => {
+    if (!['pending', 'confirmed', 'cancelled'].includes(order.status) || order.payment_status === 'paid') {
+      toast.error('Cette commande doit être conservée dans l’historique.');
+      return;
+    }
+    const confirmation = window.prompt(
+      `Suppression définitive de la commande #${order.order_number} et de son bon/facture associé.\n\nCette action est irréversible. Pour confirmer, saisissez exactement le numéro de commande :`
+    );
+    if (confirmation === null) return;
+    if (confirmation.trim() !== String(order.order_number)) {
+      toast.error('Numéro incorrect. Aucune commande n’a été supprimée.');
+      return;
+    }
+    try {
+      const response = await adminOrderAPI.deleteOrder(order.id, confirmation.trim());
+      toast.success(response.data?.message || 'Commande supprimée');
+      if (selectedOrder?.id === order.id) setSelectedOrder(null);
+      await fetchOrders();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Impossible de supprimer cette commande');
     }
   };
 
@@ -154,6 +177,13 @@ const AdminOrders = () => {
             >
               <Printer className="h-4 w-4" /> Voir le bon de réservation
             </button>
+
+            {['pending', 'confirmed', 'cancelled'].includes(order.status) && order.payment_status !== 'paid' && (
+              <button type="button" onClick={() => handleDeleteOrder(order)}
+                className="mb-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/60 px-4 py-3 text-sm font-semibold text-red-400 hover:bg-red-500/10">
+                <Trash2 className="h-4 w-4" /> Supprimer la commande et sa facture
+              </button>
+            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="min-w-0">
@@ -287,6 +317,14 @@ const AdminOrders = () => {
                     >
                       <Printer className="h-5 w-5" />
                     </button>
+                    {['pending', 'confirmed', 'cancelled'].includes(order.status) && order.payment_status !== 'paid' && (
+                      <button type="button" onClick={() => handleDeleteOrder(order)}
+                        aria-label={`Supprimer la commande ${order.order_number}`}
+                        title="Supprimer la commande test et son bon/facture"
+                        className="ml-1 rounded-lg p-2 text-red-400 hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-500">
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
