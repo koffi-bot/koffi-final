@@ -40,13 +40,14 @@ const AdminOrders = () => {
         });
       }
     } catch (error) {
-      toast.error('Erreur lors de la mise à jour');
+      toast.error(error.response?.data?.detail || 'Erreur lors de la mise à jour');
     }
   };
 
   const getStatusColor = (status) => {
     const colors = {
       pending: 'bg-yellow-500',
+      confirmed: 'bg-green-600',
       processing: 'bg-blue-500',
       shipped: 'bg-purple-500',
       delivered: 'bg-green-500',
@@ -151,7 +152,7 @@ const AdminOrders = () => {
               onClick={() => printInvoice(order)}
               className="mb-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-dark hover:opacity-90"
             >
-              <Printer className="h-4 w-4" /> Voir / télécharger la facture
+              <Printer className="h-4 w-4" /> Voir le bon de réservation
             </button>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -163,6 +164,7 @@ const AdminOrders = () => {
                   className={`w-full rounded px-2 py-2 text-sm font-semibold text-white ${getStatusColor(order.status)} focus:outline-none focus:ring-2 focus:ring-primary`}
                 >
                   <option value="pending">En attente</option>
+                  <option value="confirmed">Validée</option>
                   <option value="processing">En traitement</option>
                   <option value="shipped">Expédiée</option>
                   <option value="delivered">Livrée</option>
@@ -171,7 +173,7 @@ const AdminOrders = () => {
               </div>
 
               <div className="min-w-0">
-                <label className="mb-1 block text-xs text-gray-400">Paiement</label>
+                <label className="mb-1 block text-xs text-gray-400">Paiement physique</label>
                 <select
                   value={order.payment_status}
                   onChange={(e) =>
@@ -206,7 +208,7 @@ const AdminOrders = () => {
                 <th className="p-4 text-left font-semibold text-white">Date</th>
                 <th className="p-4 text-left font-semibold text-white">Total</th>
                 <th className="p-4 text-left font-semibold text-white">Statut</th>
-                <th className="p-4 text-left font-semibold text-white">Paiement</th>
+                <th className="p-4 text-left font-semibold text-white">Paiement physique</th>
                 <th className="p-4 text-right font-semibold text-white">Actions</th>
               </tr>
             </thead>
@@ -243,6 +245,7 @@ const AdminOrders = () => {
                       className={`${getStatusColor(order.status)} rounded px-3 py-2 text-sm font-semibold text-white focus:outline-none`}
                     >
                       <option value="pending">En attente</option>
+                      <option value="confirmed">Validée</option>
                       <option value="processing">En traitement</option>
                       <option value="shipped">Expédiée</option>
                       <option value="delivered">Livrée</option>
