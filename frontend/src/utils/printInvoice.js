@@ -23,6 +23,9 @@ export const printInvoice = (order) => {
     ? new Date(order.created_at).toLocaleDateString('fr-FR')
     : new Date().toLocaleDateString('fr-FR');
   const orderNumber = escapeHtml(order.order_number || order.id || '—');
+  const isPaid = order.payment_status === 'paid';
+  const documentTitle = isPaid ? 'FACTURE' : 'BON DE RÉSERVATION';
+  const paymentLabel = isPaid ? 'Payé' : 'À régler physiquement à la livraison';
   const customer = escapeHtml(order.user_name || 'Client KOFFI SHOP');
   const email = escapeHtml(order.user_email || '');
   const address = [
@@ -45,7 +48,7 @@ export const printInvoice = (order) => {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Facture ${orderNumber} - KOFFI SHOP</title>
+<title>${documentTitle} ${orderNumber} - KOFFI SHOP</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; padding: 32px; color: #171717; font: 14px Arial, sans-serif; }
@@ -72,17 +75,17 @@ export const printInvoice = (order) => {
 <div class="invoice">
   <header>
     <div><div class="brand">KOFFI SHOP</div><p class="muted">Votre boutique n’a plus besoin d’un trottoir.<br>Elle a besoin d’Internet.</p></div>
-    <div class="meta"><h1>FACTURE</h1><div>Commande : #${orderNumber}</div><div>Date : ${escapeHtml(date)}</div></div>
+    <div class="meta"><h1>${documentTitle}</h1><div>Commande : #${orderNumber}</div><div>Date : ${escapeHtml(date)}</div></div>
   </header>
   <div class="details">
     <section><h2>Facturé à</h2><strong>${customer}</strong><div class="muted">${email}<br>${phone}<br>${address}</div></section>
-    <section><h2>Informations de paiement</h2><div class="muted">Méthode : ${escapeHtml(order.payment_method || '—')}<br>Statut : ${escapeHtml(order.payment_status || '—')}</div></section>
+    <section><h2>Informations de paiement</h2><div class="muted">Méthode : ${escapeHtml(order.payment_method === 'cash_on_delivery' ? 'Paiement physique à la livraison' : (order.payment_method || '—'))}<br>Statut : ${paymentLabel}</div></section>
   </div>
   <table><thead><tr><th>Article</th><th>Qté</th><th>Prix unitaire</th><th>Total</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Aucun article</td></tr>'}</tbody></table>
   <div class="totals">
     <div class="total"><span>Sous-total</span><span>${money(order.subtotal)}</span></div>
     <div class="total"><span>Livraison</span><span>${money(order.shipping)}</span></div>
-    <div class="total"><span>Total à payer</span><span>${money(order.total)}</span></div>
+    <div class="total"><span>${isPaid ? "Total payé" : "Total à régler à la livraison"}</span><span>${money(order.total)}</span></div>
   </div>
   <footer>Merci d’avoir choisi KOFFI SHOP.</footer>
   <div class="actions"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
