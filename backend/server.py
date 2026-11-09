@@ -1087,7 +1087,7 @@ async def update_order_status(order_id: str, status: str, payment_status: Option
     if status != current_status and status not in transitions.get(current_status, set()):
         raise HTTPException(status_code=409, detail=f"Transition impossible : {current_status} -> {status}")
     if payment_status == "paid" and not is_cash_on_delivery:
-        raise HTTPException(status_code=409, detail="Le paiement en ligne doit être confirmé par le prestataire.")
+        raise HTTPException(status_code=409, detail="Le statut payé doit provenir d’une confirmation vérifiée du prestataire de paiement ; seul le paiement physique à la livraison peut être enregistré manuellement.")
     if status in {"processing", "shipped"} and effective_payment_status != "paid" and not is_cash_on_delivery:
         raise HTTPException(status_code=409, detail="La commande doit être payée avant son traitement.")
     if status == "delivered" and effective_payment_status != "paid":
