@@ -455,11 +455,19 @@ async def update_profile(
 
 @api_router.get("/categories", response_model=List[Category])
 async def get_categories():
-    """Get all categories."""
+    """Get all categories with product counts calculated from the live products collection."""
     categories = await db.categories.find({}, {"_id": 0}).to_list(1000)
+    product_counts = await db.products.aggregate([
+        {"$group": {"_id": "$category_id", "count": {"$sum": 1}}}
+    ]).to_list(None)
+    counts_by_category = {item["_id"]: item["count"] for item in product_counts}
+
     for cat in categories:
         if isinstance(cat.get('created_at'), str):
             cat['created_at'] = datetime.fromisoformat(cat['created_at'])
+        # Use the actual product collection as the source of truth; this also
+        # corrects counts left stale by older product/category changes.
+        cat['products_count'] = counts_by_category.get(cat.get("id"), 0)
     return categories
 
 @api_router.post("/categories", response_model=Category, dependencies=[Depends(require_current_admin)])
