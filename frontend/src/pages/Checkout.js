@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext';
 import { orderAPI } from '../services/api';
 import { toast } from 'sonner';
 import Swal from 'sweetalert2';
-import { CreditCard, Smartphone } from 'lucide-react';
 
 const Checkout = () => {
   const { cart, getCartTotal, clearCart } = useCart();
@@ -18,8 +17,6 @@ const Checkout = () => {
     shipping_postal_code: user?.postal_code || '',
     shipping_country: user?.country || 'RDC',
     phone: user?.phone || '',
-    payment_method: 'orange_money',
-    payment_phone: '',
   });
 
   if (!isAuthenticated) {
@@ -50,16 +47,19 @@ const Checkout = () => {
           color: item.color,
         })),
         ...formData,
+        payment_method: 'cash_on_delivery',
+        payment_phone: null,
         shipping_postal_code: formData.shipping_postal_code.trim() || null,
       };
 
       const response = await orderAPI.createOrder(orderData);
       
       await Swal.fire({
-        title: 'Commande enregistrée !',
+        title: 'Réservation confirmée !',
         html: `
-          <p>Votre commande <strong>#${response.data.order_number}</strong> a été créée avec succès.</p>
-          <p class="mt-4">Vous allez recevoir un email de confirmation.</p>
+          <p>Votre commande <strong>#${response.data.order_number}</strong> a bien été réservée.</p>
+          <p class="mt-4">Le paiement se fera physiquement au moment de la livraison.</p>
+          <p class="mt-2">Veuillez patienter pendant la confirmation de votre commande.</p>
         `,
         icon: 'success',
         confirmButtonColor: '#00ff66',
@@ -83,7 +83,7 @@ const Checkout = () => {
   return (
     <div className="min-h-screen bg-dark py-8">
       <div className="container mx-auto px-4">
-        <h1 className="text-4xl font-bold text-white mb-8 font-poppins">Paiement</h1>
+        <h1 className="text-4xl font-bold text-white mb-8 font-poppins">Réservation de commande</h1>
 
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -151,72 +151,13 @@ const Checkout = () => {
                 </div>
               </div>
 
-              {/* Payment Method */}
+              {/* Paiement physique à la livraison */}
               <div className="bg-dark-light rounded-xl p-6">
-                <h2 className="text-2xl font-bold text-white mb-4">Méthode de paiement</h2>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 p-4 bg-dark rounded-lg cursor-pointer hover:bg-dark-lighter transition">
-                    <input
-                      type="radio"
-                      name="payment_method"
-                      value="orange_money"
-                      checked={formData.payment_method === 'orange_money'}
-                      onChange={handleChange}
-                      className="text-primary"
-                    />
-                    <Smartphone className="w-6 h-6 text-primary" />
-                    <span className="text-white font-semibold">Orange Money</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-4 bg-dark rounded-lg cursor-pointer hover:bg-dark-lighter transition">
-                    <input
-                      type="radio"
-                      name="payment_method"
-                      value="mpesa"
-                      checked={formData.payment_method === 'mpesa'}
-                      onChange={handleChange}
-                      className="text-primary"
-                    />
-                    <Smartphone className="w-6 h-6 text-primary" />
-                    <span className="text-white font-semibold">M-Pesa</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-4 bg-dark rounded-lg cursor-pointer hover:bg-dark-lighter transition">
-                    <input
-                      type="radio"
-                      name="payment_method"
-                      value="airtel_money"
-                      checked={formData.payment_method === 'airtel_money'}
-                      onChange={handleChange}
-                      className="text-primary"
-                    />
-                    <Smartphone className="w-6 h-6 text-primary" />
-                    <span className="text-white font-semibold">Airtel Money</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-4 bg-dark rounded-lg cursor-pointer hover:bg-dark-lighter transition">
-                    <input
-                      type="radio"
-                      name="payment_method"
-                      value="card"
-                      checked={formData.payment_method === 'card'}
-                      onChange={handleChange}
-                      className="text-primary"
-                    />
-                    <CreditCard className="w-6 h-6 text-primary" />
-                    <span className="text-white font-semibold">Carte bancaire</span>
-                  </label>
+                <h2 className="text-2xl font-bold text-white mb-4">Mode de règlement</h2>
+                <div className="rounded-lg border border-primary/40 bg-dark p-4">
+                  <p className="font-semibold text-primary">Paiement à la livraison</p>
+                  <p className="mt-2 text-sm leading-6 text-gray-300">Aucun paiement en ligne n’est demandé pour le moment. Vous réglerez votre commande physiquement au moment de la livraison, après confirmation par KOFFI SHOP.</p>
                 </div>
-                {formData.payment_method !== 'card' && (
-                  <div className="mt-4">
-                    <label className="block text-white mb-2">Numéro de téléphone</label>
-                    <input
-                      type="tel"
-                      name="payment_phone"
-                      value={formData.payment_phone}
-                      onChange={handleChange}
-                      placeholder="+243 999 999 999"
-                      className="w-full bg-dark text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-                )}
               </div>
             </div>
 
@@ -254,7 +195,7 @@ const Checkout = () => {
                   className="w-full bg-primary text-dark font-bold py-3 rounded-lg hover:bg-primary-light transition disabled:opacity-50"
                   data-testid="place-order-btn"
                 >
-                  {loading ? 'Traitement...' : 'Passer la commande'}
+                  {loading ? 'Réservation...' : 'Réserver ma commande'}
                 </button>
               </div>
             </div>
