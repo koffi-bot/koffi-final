@@ -1061,8 +1061,8 @@ async def set_collaborator_active(collaborator_id: str, payload: dict):
 
 @api_router.put("/admin/orders/{order_id}/status", dependencies=[Depends(require_current_admin)])
 async def update_order_status(order_id: str, status: str, payment_status: Optional[str] = None):
-    """Update order status with validated transitions and one-time stock release."""
-    allowed_statuses = {"pending", "processing", "shipped", "delivered", "cancelled"}
+    """Manage reservation status and record cash collected at delivery."""
+    allowed_statuses = {"pending", "confirmed", "processing", "shipped", "delivered", "cancelled"}
     allowed_payment_statuses = {"pending", "paid", "failed"}
     if status not in allowed_statuses:
         raise HTTPException(status_code=422, detail="Statut de commande invalide")
@@ -1071,54 +1071,68 @@ async def update_order_status(order_id: str, status: str, payment_status: Option
 
     order = await db.orders.find_one({"id": order_id})
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=404, detail="Commande introuvable")
     current_status = order.get("status", "pending")
+    current_payment_status = order.get("payment_status", "pending")
+    is_cash_on_delivery = order.get("payment_method") == "cash_on_delivery"
+    effective_payment_status = payment_status if payment_status is not None else current_payment_status
     transitions = {
-        "pending": {"processing", "cancelled"},
+        "pending": {"confirmed", "processing", "cancelled"},
+        "confirmed": {"processing", "cancelled"},
         "processing": {"shipped", "cancelled"},
         "shipped": {"delivered"},
         "delivered": set(),
         "cancelled": set(),
     }
     if status != current_status and status not in transitions.get(current_status, set()):
-        raise HTTPException(status_code=409, detail=f"Transition impossible: {current_status} -> {status}")
-    if payment_status == "paid":
-        raise HTTPException(
-            status_code=409,
-            detail="Le statut payé doit provenir d'une confirmation vérifiée du prestataire de paiement"
-        )
-    if status in {"processing", "shipped", "delivered"} and order.get("payment_status") != "paid":
-        raise HTTPException(status_code=409, detail="La commande doit être payée avant son traitement")
-    if order.get("payment_status") == "paid" and status == "cancelled":
-        raise HTTPException(status_code=409, detail="Une commande payée nécessite un remboursement avant annulation")
+        raise HTTPException(status_code=409, detail=f"Transition impossible : {current_status} -> {status}")
+    if payment_status == "paid" and not is_cash_on_delivery:
+        raise HTTPException(status_code=409, detail="Le statut payé doit provenir d’une confirmation vérifiée du prestataire de paiement ; seul le paiement physique à la livraison peut être enregistré manuellement.")
+    if status in {"processing", "shipped"} and effective_payment_status != "paid" and not is_cash_on_delivery:
+        raise HTTPException(status_code=409, detail="La commande doit être payée avant son traitement.")
+    if status == "delivered" and effective_payment_status != "paid":
+        raise HTTPException(status_code=409, detail="Enregistrez d'abord le paiement physique reçu à la livraison.")
+    if current_payment_status == "paid" and status == "cancelled":
+        raise HTTPException(status_code=409, detail="Une commande payée nécessite un remboursement avant annulation.")
 
-    update_data = {"status": status, "updated_at": datetime.utcnow().isoformat()}
+    now = datetime.utcnow().isoformat()
+    update_data = {"status": status, "updated_at": now}
     if payment_status is not None:
         update_data["payment_status"] = payment_status
+        if payment_status == "paid" and current_payment_status != "paid":
+            update_data["payment_received_at"] = now
+            update_data["payment_received_method"] = "physical_delivery" if is_cash_on_delivery else "provider"
 
-    # Réserver atomiquement le droit de libérer le stock : une seule annulation gagne.
     release_stock = status == "cancelled" and order.get("stock_reserved", False)
     if release_stock:
         update_data["stock_reserved"] = False
-
     result = await db.orders.update_one(
         {"id": order_id, "status": current_status,
          **({"stock_reserved": {"$ne": False}} if release_stock else {})},
         {"$set": update_data}
     )
     if result.modified_count != 1:
-        raise HTTPException(status_code=409, detail="La commande a été modifiée simultanément; rechargez-la")
+        raise HTTPException(status_code=409, detail="La commande a été modifiée simultanément ; rechargez-la.")
 
+    labels = {
+        "pending": "en attente de confirmation", "confirmed": "validée",
+        "processing": "en cours de traitement", "shipped": "expédiée",
+        "delivered": "livrée", "cancelled": "refusée ou annulée",
+    }
     if status != current_status:
-        await create_user_notification(order["user_id"], "order_update", "Mise à jour de votre commande", f"Votre commande #{order.get('order_number', order_id)} est maintenant : {status}.", "/orders")
-
+        await create_user_notification(
+            order["user_id"], "order_update", "Mise à jour de votre commande",
+            f"Votre commande #{order.get('order_number', order_id)} est {labels.get(status, status)}.", "/orders"
+        )
+    if payment_status == "paid" and current_payment_status != "paid":
+        await create_user_notification(
+            order["user_id"], "payment_update", "Paiement confirmé",
+            f"Le paiement de votre commande #{order.get('order_number', order_id)} a été enregistré.", "/orders"
+        )
     if release_stock:
         for item in order.get("items", []):
-            await db.products.update_one(
-                {"id": item["product_id"]},
-                {"$inc": {"stock": item["quantity"]}}
-            )
-    return {"message": "Order status updated"}
+            await db.products.update_one({"id": item["product_id"]}, {"$inc": {"stock": item["quantity"]}})
+    return {"message": "Commande mise à jour"}
 
 # ============================================
 # ADMIN STATS
