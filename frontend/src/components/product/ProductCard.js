@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Star, ShoppingCart, Heart } from 'lucide-react';
+import { Star, ShoppingCart, Heart, Share2 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { wishlistAPI } from '../../services/api';
@@ -13,6 +13,45 @@ const ProductCard = ({ product }) => {
   const handleAddToCart = (e) => {
     e.preventDefault();
     addToCart(product, 1);
+  };
+
+  const handleShareProduct = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const productUrl = `${window.location.origin}/product/${product.id}`;
+    const shareData = {
+      title: product.name,
+      text: `${product.name} — découvrez cet article sur KOFFI SHOP`,
+      url: productUrl,
+    };
+
+    try {
+      if (product.images?.[0] && navigator.share && navigator.canShare) {
+        try {
+          const response = await fetch(product.images[0]);
+          const blob = await response.blob();
+          const extension = blob.type.split('/')[1] || 'jpg';
+          const imageFile = new File([blob], `koffi-${product.id}.${extension}`, { type: blob.type || 'image/jpeg' });
+          if (navigator.canShare({ files: [imageFile] })) {
+            await navigator.share({ ...shareData, files: [imageFile] });
+            return;
+          }
+        } catch (imageError) {
+          // Fall back to sharing the product link.
+        }
+      }
+
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(productUrl);
+        toast.success('Lien du produit copié');
+      } else {
+        window.prompt('Copiez le lien du produit :', productUrl);
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') toast.error('Impossible de partager cet article');
+    }
   };
 
   const handleAddToWishlist = async (e) => {
@@ -57,9 +96,17 @@ const ProductCard = ({ product }) => {
           </button>
           <button
             onClick={handleAddToWishlist}
+            aria-label="Ajouter aux favoris"
             className="bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition"
           >
             <Heart className="w-5 h-5" />
+          </button>
+          <button
+            onClick={handleShareProduct}
+            aria-label="Partager cet article"
+            className="bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition"
+          >
+            <Share2 className="w-5 h-5" />
           </button>
         </div>
       </Link>
