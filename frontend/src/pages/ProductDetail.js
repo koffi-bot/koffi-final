@@ -7,7 +7,6 @@ import { Star, ShoppingCart, Heart, Truck, Shield, ArrowLeft, Share2 } from 'luc
 import { toast } from 'sonner';
 import { wishlistAPI } from '../services/api';
 import Swal from 'sweetalert2';
-import { createProductStoryCard } from '../utils/shareCard';
 
 const ProductDetail = () => {
   const { id } = useParams();
@@ -67,30 +66,30 @@ const ProductDetail = () => {
 
   const handleShareProduct = async () => {
     try {
-      const imageUrl = product.images?.[selectedImage];
-      const storyFile = await createProductStoryCard(product, imageUrl);
-      const sharePayload = { files: [storyFile] };
+      const backendUrl = (process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001').replace(/\/$/, '');
+      const shareUrl = `${backendUrl}/share/products/${encodeURIComponent(product.id)}`;
+      const shareData = {
+        title: `${product.name} | KOFFI SHOP`,
+        text: `${product.name} — ${Number(product.price).toFixed(2)}. Découvrez cet article sur KOFFI SHOP :`,
+        url: shareUrl,
+      };
 
-      // Share only the generated branded image: no separate product URL or source photo.
-      if (navigator.share && (!navigator.canShare || navigator.canShare(sharePayload))) {
-        await navigator.share(sharePayload);
+      if (navigator.share) {
+        await navigator.share(shareData);
         return;
       }
 
-      // Browsers without image sharing can still save the exact card for a Story.
-      const objectUrl = URL.createObjectURL(storyFile);
-      const downloadLink = document.createElement('a');
-      downloadLink.href = objectUrl;
-      downloadLink.download = storyFile.name;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      downloadLink.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
-      toast.success("Carte KOFFI SHOP téléchargée. Tu peux la publier en Story.");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("Lien du produit copié. Tu peux maintenant le partager.");
+        return;
+      }
+
+      window.prompt("Copie le lien du produit :", shareUrl);
     } catch (error) {
       if (error.name !== 'AbortError') {
-        console.error('Product story share failed:', error);
-        toast.error(error.message || "Impossible de créer la carte de partage.");
+        console.error('Product link share failed:', error);
+        toast.error("Impossible de partager ce produit. Réessaie.");
       }
     }
   };
