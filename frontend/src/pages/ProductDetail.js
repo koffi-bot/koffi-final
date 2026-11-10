@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { productAPI, reviewAPI } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { Star, ShoppingCart, Heart, Truck, Shield, ArrowLeft } from 'lucide-react';
+import { Star, ShoppingCart, Heart, Truck, Shield, ArrowLeft, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { wishlistAPI } from '../services/api';
 import Swal from 'sweetalert2';
@@ -62,6 +62,44 @@ const ProductDetail = () => {
       return;
     }
     addToCart(product, quantity, selectedSize, selectedColor);
+  };
+
+  const handleShareProduct = async () => {
+    const productUrl = `${window.location.origin}/product/${product.id}`;
+    const shareData = {
+      title: product.name,
+      text: `${product.name} — découvrez cet article sur KOFFI SHOP`,
+      url: productUrl,
+    };
+
+    try {
+      // Share the product photo when the browser supports sharing files.
+      if (product.images?.[selectedImage] && navigator.share && navigator.canShare) {
+        try {
+          const response = await fetch(product.images[selectedImage]);
+          const blob = await response.blob();
+          const extension = blob.type.split('/')[1] || 'jpg';
+          const imageFile = new File([blob], `koffi-${product.id}.${extension}`, { type: blob.type || 'image/jpeg' });
+          if (navigator.canShare({ files: [imageFile] })) {
+            await navigator.share({ ...shareData, files: [imageFile] });
+            return;
+          }
+        } catch (imageError) {
+          // Fall back to sharing the product link.
+        }
+      }
+
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(productUrl);
+        toast.success('Lien du produit copié');
+      } else {
+        window.prompt('Copiez le lien du produit :', productUrl);
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') toast.error('Impossible de partager cet article');
+    }
   };
 
   const handleAddToWishlist = async () => {
@@ -269,9 +307,18 @@ const ProductDetail = () => {
               </button>
               <button
                 onClick={handleAddToWishlist}
+                aria-label="Ajouter aux favoris"
                 className="bg-dark-light text-white p-4 rounded-lg hover:bg-dark-lighter transition"
               >
                 <Heart className="w-6 h-6" />
+              </button>
+              <button
+                onClick={handleShareProduct}
+                aria-label="Partager cet article"
+                className="bg-dark-light text-white p-4 rounded-lg hover:bg-dark-lighter transition flex items-center justify-center gap-2"
+              >
+                <Share2 className="w-6 h-6" />
+                <span className="hidden sm:inline">Share</span>
               </button>
             </div>
 
