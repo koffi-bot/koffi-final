@@ -1,9 +1,11 @@
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import html
 import asyncio
 import re
 import secrets
@@ -56,6 +58,48 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # Mount static files
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+@app.get("/share/products/{product_id}", response_class=HTMLResponse)
+async def share_product_preview(product_id: str, request: Request):
+    """Return crawler-readable product metadata; browsers continue to the product page."""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produit introuvable")
+
+    frontend_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    if not frontend_url.startswith("https://"):
+        raise HTTPException(status_code=503, detail="FRONTEND_URL HTTPS doit être configurée")
+    product_url = f"{frontend_url}/product/{product_id}"
+    title = f"{product.get('name', 'Article')} | KOFFI SHOP"
+    description = " ".join(str(product.get("description") or "Découvrez cet article sur KOFFI SHOP.").split())
+    price = product.get("price")
+    if price is not None:
+        description = f"Prix : {price} USD. {description}"
+    description = description[:197].rstrip() + ("..." if len(description) > 200 else "")
+    images = product.get("images") or []
+    image_url = images[0] if images else ""
+    if image_url.startswith("/"):
+        image_url = str(request.base_url).rstrip("/") + image_url
+
+    esc = lambda value: html.escape(str(value), quote=True)
+    image_meta = (
+        f'<meta property="og:image" content="{esc(image_url)}" />'
+        f'<meta property="og:image:alt" content="{esc(title)}" />'
+        if image_url else ""
+    )
+    return HTMLResponse(f"""<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>{esc(title)}</title><meta name="description" content="{esc(description)}" />
+<link rel="canonical" href="{esc(product_url)}" />
+<meta property="og:type" content="product" /><meta property="og:site_name" content="KOFFI SHOP" />
+<meta property="og:title" content="{esc(title)}" /><meta property="og:description" content="{esc(description)}" />
+<meta property="og:url" content="{esc(str(request.url))}" />{image_meta}
+<meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="{esc(title)}" />
+<meta name="twitter:description" content="{esc(description)}" />
+<meta http-equiv="refresh" content="0;url={esc(product_url)}" />
+</head><body><p>Ouverture de KOFFI SHOP… <a href="{esc(product_url)}">Voir le produit</a></p></body></html>""")
+
 
 # Create API router
 api_router = APIRouter(prefix="/api")
