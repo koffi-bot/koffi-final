@@ -6,6 +6,8 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import html
+from io import BytesIO
+from urllib.parse import urlparse
 import asyncio
 import re
 import secrets
@@ -17,7 +19,10 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import shutil
 import uuid
+import requests
 from pymongo.errors import DuplicateKeyError
+from PIL import Image, ImageDraw, ImageFont
+from fastapi.responses import Response
 
 # Load .env before auth.py reads SECRET_KEY.
 ROOT_DIR = Path(__file__).parent
@@ -59,9 +64,122 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 # Mount static files
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
+def _share_font(size: int, bold: bool = False):
+    candidates = (
+        ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"]
+        if bold else
+        ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"]
+    )
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return ImageFont.truetype(candidate, size)
+    return ImageFont.load_default()
+
+
+def _load_share_product_image(image_url: str, request: Request):
+    if not image_url:
+        return None
+    parsed = urlparse(image_url)
+    if image_url.startswith("/uploads/"):
+        local_path = (UPLOAD_DIR / Path(parsed.path).name).resolve()
+        if local_path.parent != UPLOAD_DIR.resolve() or not local_path.is_file():
+            return None
+        raw = local_path.read_bytes()
+    elif parsed.scheme in {"http", "https"} and parsed.netloc:
+        response = requests.get(image_url, timeout=(3, 6), stream=True)
+        if response.status_code != 200:
+            return None
+        raw = response.raw.read(8 * 1024 * 1024 + 1)
+        if len(raw) > 8 * 1024 * 1024:
+            return None
+    else:
+        return None
+    try:
+        image = Image.open(BytesIO(raw)).convert("RGB")
+        image.thumbnail((900, 900), Image.Resampling.LANCZOS)
+        return image
+    except Exception:
+        logger.warning("Unable to decode product image for share card", exc_info=True)
+        return None
+
+
+def _render_product_share_card(product: dict, image_url: str, request: Request) -> bytes:
+    width, height = 1200, 630
+    canvas = Image.new("RGB", (width, height), "#070907")
+    draw = ImageDraw.Draw(canvas)
+    # Subtle dark-green background and KOFFI signature.
+    for y in range(height):
+        blend = y / height
+        draw.line((0, y, width, y), fill=(7, int(15 + 8 * blend), 10))
+    draw.rounded_rectangle((42, 42, 1158, 588), radius=34, outline="#164B2C", width=2)
+    draw.rounded_rectangle((78, 75, 88, 143), radius=5, fill="#00FF66")
+    draw.text((108, 78), "KOFFI", font=_share_font(38, True), fill="#FFFFFF")
+    draw.text((246, 78), "SHOP", font=_share_font(38, True), fill="#00FF66")
+    draw.text((110, 126), "LE STYLE À PORTÉE DE MAIN", font=_share_font(14), fill="#A7B5AA")
+
+    # Framed product photo.
+    frame = (78, 176, 500, 540)
+    draw.rounded_rectangle(frame, radius=24, fill="#111A13", outline="#00FF66", width=3)
+    photo = _load_share_product_image(image_url, request)
+    if photo:
+        inner_w, inner_h = 394, 334
+        scale = max(inner_w / photo.width, inner_h / photo.height)
+        resized = photo.resize((int(photo.width * scale), int(photo.height * scale)), Image.Resampling.LANCZOS)
+        left = (resized.width - inner_w) // 2
+        top = (resized.height - inner_h) // 2
+        crop = resized.crop((left, top, left + inner_w, top + inner_h))
+        mask = Image.new("L", (inner_w, inner_h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, inner_w - 1, inner_h - 1), radius=16, fill=255)
+        canvas.paste(crop, (92, 190), mask)
+    else:
+        draw.text((215, 315), "K", font=_share_font(120, True), fill="#00FF66")
+
+    # Product details on the right.
+    text_x = 550
+    draw.text((text_x, 205), "À DÉCOUVRIR", font=_share_font(17, True), fill="#00FF66")
+    name = str(product.get("name") or "Article KOFFI SHOP").strip()
+    name_font = _share_font(42, True)
+    words, rows, current = name.split(), [], ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if draw.textbbox((0, 0), candidate, font=name_font)[2] > 565 and current:
+            rows.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        rows.append(current)
+    for index, row in enumerate(rows[:3]):
+        draw.text((text_x, 250 + index * 54), row, font=name_font, fill="#FFFFFF")
+    price = product.get("price")
+    price_text = f"${float(price):,.2f}" if price is not None else "Voir le prix"
+    draw.text((text_x, 440), price_text, font=_share_font(43, True), fill="#00FF66")
+    draw.line((text_x, 510, 1110, 510), fill="#245A37", width=2)
+    draw.text((text_x, 528), "Votre boutique n’a plus besoin d’un trottoir.", font=_share_font(17), fill="#D2DAD3")
+
+    output = BytesIO()
+    canvas.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+@app.get("/share/products/{product_id}/image")
+async def share_product_image(product_id: str, request: Request):
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produit introuvable")
+    images = product.get("images") or []
+    image_url = images[0] if images else ""
+    try:
+        png = _render_product_share_card(product, image_url, request)
+    except Exception:
+        logger.exception("Could not render KOFFI SHOP product share card")
+        raise HTTPException(status_code=502, detail="Impossible de générer la carte du produit")
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "public, max-age=300, s-maxage=300"})
+
+
 @app.get("/share/products/{product_id}", response_class=HTMLResponse)
 async def share_product_preview(product_id: str, request: Request):
-    """Return crawler-readable product metadata; browsers continue to the product page."""
+    """Serve social crawlers a branded card, then open the exact product page."""
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Produit introuvable")
@@ -76,17 +194,9 @@ async def share_product_preview(product_id: str, request: Request):
     if price is not None:
         description = f"Prix : ${price}. {description}"
     description = description[:197].rstrip() + ("..." if len(description) > 200 else "")
-    images = product.get("images") or []
-    image_url = images[0] if images else ""
-    if image_url.startswith("/"):
-        image_url = str(request.base_url).rstrip("/") + image_url
+    image_url = str(request.url).rstrip("/") + "/image"
 
     esc = lambda value: html.escape(str(value), quote=True)
-    image_meta = (
-        f'<meta property="og:image" content="{esc(image_url)}" />'
-        f'<meta property="og:image:alt" content="{esc(title)}" />'
-        if image_url else ""
-    )
     return HTMLResponse(f"""<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -94,13 +204,15 @@ async def share_product_preview(product_id: str, request: Request):
 <link rel="canonical" href="{esc(product_url)}" />
 <meta property="og:type" content="product" /><meta property="og:site_name" content="KOFFI SHOP" />
 <meta property="og:title" content="{esc(title)}" /><meta property="og:description" content="{esc(description)}" />
-<meta property="og:url" content="{esc(str(request.url))}" />{image_meta}
+<meta property="og:url" content="{esc(str(request.url))}" />
+<meta property="og:image" content="{esc(image_url)}" /><meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" /><meta property="og:image:type" content="image/png" />
+<meta property="og:image:alt" content="{esc(title)}" />
 <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="{esc(title)}" />
-<meta name="twitter:description" content="{esc(description)}" />
+<meta name="twitter:description" content="{esc(description)}" /><meta name="twitter:image" content="{esc(image_url)}" />
 <meta name="twitter:image:alt" content="{esc(title)}" />
 <meta http-equiv="refresh" content="0;url={esc(product_url)}" />
 </head><body><p>Ouverture de KOFFI SHOP… <a href="{esc(product_url)}">Voir le produit</a></p></body></html>""", headers={"Cache-Control": "public, max-age=300, s-maxage=300"})
-
 
 # Create API router
 api_router = APIRouter(prefix="/api")
