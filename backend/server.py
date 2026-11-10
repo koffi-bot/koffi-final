@@ -6,6 +6,8 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import html
+import ipaddress
+import socket
 from io import BytesIO
 from urllib.parse import urlparse
 import asyncio
@@ -79,27 +81,65 @@ def _share_font(size: int, bold: bool = False):
 def _load_share_product_image(image_url: str, request: Request):
     if not image_url:
         return None
+
     parsed = urlparse(image_url)
-    if image_url.startswith("/uploads/"):
-        local_path = (UPLOAD_DIR / Path(parsed.path).name).resolve()
-        if local_path.parent != UPLOAD_DIR.resolve() or not local_path.is_file():
-            return None
-        raw = local_path.read_bytes()
-    elif parsed.scheme in {"http", "https"} and parsed.netloc:
-        response = requests.get(image_url, timeout=(3, 6), stream=True)
-        if response.status_code != 200:
-            return None
-        raw = response.raw.read(8 * 1024 * 1024 + 1)
-        if len(raw) > 8 * 1024 * 1024:
-            return None
-    else:
-        return None
+    max_bytes = 8 * 1024 * 1024
+
     try:
-        image = Image.open(BytesIO(raw)).convert("RGB")
+        if image_url.startswith("/uploads/"):
+            local_root = UPLOAD_DIR.resolve()
+            local_path = (local_root / Path(parsed.path).name).resolve()
+            if local_path.parent != local_root or not local_path.is_file():
+                return None
+            if local_path.stat().st_size > max_bytes:
+                return None
+            raw = local_path.read_bytes()
+        elif parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password:
+            # Product image URLs are stored in the database; reject private, loopback,
+            # link-local and reserved destinations to prevent server-side request forgery.
+            try:
+                addresses = {
+                    ipaddress.ip_address(item[4][0])
+                    for item in socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)
+                }
+            except (OSError, ValueError):
+                return None
+            if not addresses or any(not address.is_global for address in addresses):
+                return None
+
+            response = requests.get(
+                image_url,
+                timeout=(3, 6),
+                stream=True,
+                allow_redirects=False,
+                headers={"Accept": "image/png,image/jpeg,image/webp,image/gif"},
+            )
+            try:
+                if response.status_code != 200 or not response.headers.get("Content-Type", "").lower().startswith("image/"):
+                    return None
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > max_bytes:
+                    return None
+                chunks = []
+                total = 0
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > max_bytes:
+                        return None
+                    chunks.append(chunk)
+                raw = b"".join(chunks)
+            finally:
+                response.close()
+        else:
+            return None
+
+        image = Image.open(BytesIO(raw))
         image.thumbnail((900, 900), Image.Resampling.LANCZOS)
-        return image
+        return image.convert("RGB")
     except Exception:
-        logger.warning("Unable to decode product image for share card", exc_info=True)
+        logger.warning("Unable to load product image for share card", exc_info=True)
         return None
 
 
