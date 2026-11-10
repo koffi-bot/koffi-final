@@ -7,6 +7,7 @@ import { Star, ShoppingCart, Heart, Truck, Shield, ArrowLeft, Share2 } from 'luc
 import { toast } from 'sonner';
 import { wishlistAPI } from '../services/api';
 import Swal from 'sweetalert2';
+import { createProductStoryCard } from '../utils/shareCard';
 
 const ProductDetail = () => {
   const { id } = useParams();
@@ -65,40 +66,32 @@ const ProductDetail = () => {
   };
 
   const handleShareProduct = async () => {
-    const productUrl = `${window.location.origin}/product/${product.id}`;
-    const shareData = {
-      title: product.name,
-      text: `${product.name} — découvrez cet article sur KOFFI SHOP`,
-      url: productUrl,
-    };
-
     try {
-      // Share the product photo when the browser supports sharing files.
-      if (product.images?.[selectedImage] && navigator.share && navigator.canShare) {
-        try {
-          const response = await fetch(product.images[selectedImage]);
-          const blob = await response.blob();
-          const extension = blob.type.split('/')[1] || 'jpg';
-          const imageFile = new File([blob], `koffi-${product.id}.${extension}`, { type: blob.type || 'image/jpeg' });
-          if (navigator.canShare({ files: [imageFile] })) {
-            await navigator.share({ ...shareData, files: [imageFile] });
-            return;
-          }
-        } catch (imageError) {
-          // Fall back to sharing the product link.
-        }
+      const imageUrl = product.images?.[selectedImage];
+      const storyFile = await createProductStoryCard(product, imageUrl);
+      const sharePayload = { files: [storyFile] };
+
+      // Share only the generated branded image: no separate product URL or source photo.
+      if (navigator.share && (!navigator.canShare || navigator.canShare(sharePayload))) {
+        await navigator.share(sharePayload);
+        return;
       }
 
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(productUrl);
-        toast.success('Lien du produit copié');
-      } else {
-        window.prompt('Copiez le lien du produit :', productUrl);
-      }
+      // Browsers without image sharing can still save the exact card for a Story.
+      const objectUrl = URL.createObjectURL(storyFile);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = objectUrl;
+      downloadLink.download = storyFile.name;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+      toast.success("Carte KOFFI SHOP téléchargée. Tu peux la publier en Story.");
     } catch (error) {
-      if (error.name !== 'AbortError') toast.error('Impossible de partager cet article');
+      if (error.name !== 'AbortError') {
+        console.error('Product story share failed:', error);
+        toast.error(error.message || "Impossible de créer la carte de partage.");
+      }
     }
   };
 
