@@ -74,7 +74,7 @@ async def share_product_preview(product_id: str, request: Request):
     description = " ".join(str(product.get("description") or "Découvrez cet article sur KOFFI SHOP.").split())
     price = product.get("price")
     if price is not None:
-        description = f"Prix : {price} USD. {description}"
+        description = f"Prix : ${price}. {description}"
     description = description[:197].rstrip() + ("..." if len(description) > 200 else "")
     images = product.get("images") or []
     image_url = images[0] if images else ""
@@ -97,8 +97,9 @@ async def share_product_preview(product_id: str, request: Request):
 <meta property="og:url" content="{esc(str(request.url))}" />{image_meta}
 <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="{esc(title)}" />
 <meta name="twitter:description" content="{esc(description)}" />
+<meta name="twitter:image:alt" content="{esc(title)}" />
 <meta http-equiv="refresh" content="0;url={esc(product_url)}" />
-</head><body><p>Ouverture de KOFFI SHOP… <a href="{esc(product_url)}">Voir le produit</a></p></body></html>""")
+</head><body><p>Ouverture de KOFFI SHOP… <a href="{esc(product_url)}">Voir le produit</a></p></body></html>""", headers={"Cache-Control": "public, max-age=300, s-maxage=300"})
 
 
 # Create API router
