@@ -41,7 +41,7 @@ const Header = () => {
           </div>
 
           {/* Right Icons */}
-          <div className="flex items-center gap-4">
+          <div className="header-actions flex items-center gap-4">
             {/* Search Icon - Mobile */}
             <button
               className="md:hidden text-white hover:text-primary transition"
@@ -78,11 +78,11 @@ const Header = () => {
             </Link>
 
             {/* User Menu */}
-            <div className="relative group">
-              <button className="text-white hover:text-primary transition" data-testid="user-menu-btn">
+            <div className="header-user-menu relative group">
+              <button type="button" aria-label="Ouvrir le menu du compte" aria-haspopup="true" className="text-white hover:text-primary transition" data-testid="user-menu-btn">
                 <User className="w-6 h-6" />
               </button>
-              <div className="absolute right-0 mt-2 w-48 bg-dark-light rounded-lg shadow-lg py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+              <div className="header-user-menu-panel absolute right-0 mt-2 w-48 bg-dark-light rounded-lg shadow-lg py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                 {isAuthenticated ? (
                   <>
                     <Link
