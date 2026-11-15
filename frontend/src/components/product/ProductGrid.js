@@ -20,8 +20,8 @@ const ProductGrid = ({ products, loading }) => {
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-      {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+      {products.map((product, index) => (
+        <ProductCard key={product.id} product={product} animationDelay={Math.min(index * 55, 440)} />
       ))}
     </div>
   );
