@@ -143,7 +143,7 @@ const ProductDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-dark py-8">
+    <div className="product-detail-page min-h-screen bg-dark py-8">
       <div className="container mx-auto px-4">
         {/* Back Button */}
         <button
@@ -183,12 +183,12 @@ const ProductDetail = () => {
 
           {/* Details */}
           <div>
-            <h1 className="text-4xl font-bold text-white mb-4 font-poppins" data-testid="product-title">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-4 font-poppins break-words" data-testid="product-title">
               {product.name}
             </h1>
 
             {/* Rating */}
-            <div className="flex items-center gap-4 mb-6">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-6">
               <div className="flex items-center gap-1">
                 {[...Array(5)].map((_, i) => (
                   <Star
@@ -206,8 +206,8 @@ const ProductDetail = () => {
             </div>
 
             {/* Price */}
-            <div className="flex items-center gap-4 mb-6">
-              <span className="text-4xl font-bold text-primary">${product.price.toFixed(2)}</span>
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+              <span className="text-3xl sm:text-4xl font-bold text-primary">${product.price.toFixed(2)}</span>
               {product.compare_price && (
                 <span className="text-2xl text-gray-400 line-through">${product.compare_price.toFixed(2)}</span>
               )}
@@ -225,7 +225,7 @@ const ProductDetail = () => {
             {product.sizes?.length > 0 && (
               <div className="mb-6">
                 <label className="block text-white font-semibold mb-3">Taille</label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {product.sizes.map((size) => (
                     <button
                       key={size}
@@ -247,7 +247,7 @@ const ProductDetail = () => {
             {product.colors?.length > 0 && (
               <div className="mb-6">
                 <label className="block text-white font-semibold mb-3">Couleur</label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {product.colors.map((color) => (
                     <button
                       key={color}
@@ -287,11 +287,11 @@ const ProductDetail = () => {
             </div>
 
             {/* Actions */}
-            <div className="flex gap-4 mb-8">
+            <div className="product-detail-actions flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8">
               <button
                 onClick={handleAddToCart}
                 disabled={product.stock === 0}
-                className="flex-1 bg-primary text-dark font-bold py-4 rounded-lg hover:bg-primary-light transition disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full sm:flex-1 bg-primary text-dark font-bold py-4 rounded-lg hover:bg-primary-light transition disabled:opacity-50 flex items-center justify-center gap-2"
                 data-testid="add-to-cart-btn"
               >
                 <ShoppingCart className="w-5 h-5" />
@@ -300,14 +300,14 @@ const ProductDetail = () => {
               <button
                 onClick={handleAddToWishlist}
                 aria-label="Ajouter aux favoris"
-                className="bg-dark-light text-white p-4 rounded-lg hover:bg-dark-lighter transition"
+                className="w-full sm:w-auto bg-dark-light text-white p-4 rounded-lg hover:bg-dark-lighter transition"
               >
                 <Heart className="w-6 h-6" />
               </button>
               <button
                 onClick={handleShareProduct}
                 aria-label="Partager cet article"
-                className="bg-dark-light text-white p-4 rounded-lg hover:bg-dark-lighter transition flex items-center justify-center gap-2"
+                className="w-full sm:w-auto bg-dark-light text-white p-4 rounded-lg hover:bg-dark-lighter transition flex items-center justify-center gap-2"
               >
                 <Share2 className="w-6 h-6" />
                 <span className="hidden sm:inline">Share</span>
