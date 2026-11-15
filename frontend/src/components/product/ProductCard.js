@@ -69,10 +69,10 @@ const ProductCard = ({ product }) => {
   };
 
   return (
-    <div className="bg-dark-light rounded-xl overflow-hidden group hover:shadow-glow transition" data-testid={`product-card-${product.id}`}>
+    <div className="product-card bg-dark-light rounded-xl overflow-hidden group hover:shadow-glow transition" data-testid={`product-card-${product.id}`}>
       <Link to={`/product/${product.id}`} className="block relative overflow-hidden aspect-square">
         <img
-          src={product.images[0]}
+          src={product.images?.[0] || ''}
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
         />
@@ -86,7 +86,7 @@ const ProductCard = ({ product }) => {
             NOUVEAU
           </span>
         )}
-        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+        <div className="product-card-actions absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
           <button
             onClick={handleAddToCart}
             className="bg-primary text-dark p-3 rounded-full hover:bg-primary-light transition"
@@ -124,9 +124,9 @@ const ProductCard = ({ product }) => {
           <span className="text-gray-400 text-sm">({product.reviews_count})</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-primary font-bold text-xl">${product.price.toFixed(2)}</span>
+          <span className="product-card-price text-primary font-bold text-base sm:text-xl">${product.price.toFixed(2)}</span>
           {product.compare_price && (
-            <span className="text-gray-400 text-sm line-through">${product.compare_price.toFixed(2)}</span>
+            <span className="text-gray-400 text-xs sm:text-sm line-through">${product.compare_price.toFixed(2)}</span>
           )}
         </div>
         {product.stock < 10 && product.stock > 0 && (
