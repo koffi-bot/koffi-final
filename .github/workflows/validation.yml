@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, integration/pr5-pr6]
   push:
-    branches: [fix/account-identity-deduplication, integration/pr5-pr6]
+    branches: [main, fix/account-identity-deduplication, integration/pr5-pr6]
 
 jobs:
   backend-checks:
