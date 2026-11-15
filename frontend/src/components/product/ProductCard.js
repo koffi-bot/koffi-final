@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, ShoppingCart, Heart, Share2 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -6,12 +6,14 @@ import { useAuth } from '../../context/AuthContext';
 import { wishlistAPI } from '../../services/api';
 import { toast } from 'sonner';
 
-const ProductCard = ({ product }) => {
+const ProductCard = ({ product, animationDelay = 0 }) => {
+  const [heartPulse, setHeartPulse] = useState(false);
   const { addToCart } = useCart();
   const { isAuthenticated } = useAuth();
 
   const handleAddToCart = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     addToCart(product, 1);
   };
 
@@ -56,6 +58,9 @@ const ProductCard = ({ product }) => {
 
   const handleAddToWishlist = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    setHeartPulse(true);
+    window.setTimeout(() => setHeartPulse(false), 520);
     if (!isAuthenticated) {
       toast.error('Veuillez vous connecter');
       return;
@@ -69,7 +74,7 @@ const ProductCard = ({ product }) => {
   };
 
   return (
-    <div className="product-card bg-dark-light rounded-xl overflow-hidden group hover:shadow-glow transition" data-testid={`product-card-${product.id}`}>
+    <div className="product-card product-card-enter bg-dark-light rounded-xl overflow-hidden group hover:shadow-glow transition" style={{ "--product-card-delay": `${animationDelay}ms` }} data-testid={`product-card-${product.id}`}>
       <Link to={`/product/${product.id}`} className="block relative overflow-hidden aspect-square">
         <img
           src={product.images?.[0] || ''}
@@ -88,23 +93,30 @@ const ProductCard = ({ product }) => {
         )}
         <div className="product-card-actions absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
           <button
+            type="button"
             onClick={handleAddToCart}
-            className="bg-primary text-dark p-3 rounded-full hover:bg-primary-light transition"
+            aria-label={`Ajouter ${product.name} au panier`}
+            title="Ajouter au panier"
+            className="product-action-button bg-primary text-dark p-3 rounded-full hover:bg-primary-light transition"
             data-testid={`add-to-cart-${product.id}`}
           >
             <ShoppingCart className="w-5 h-5" />
           </button>
           <button
+            type="button"
             onClick={handleAddToWishlist}
             aria-label="Ajouter aux favoris"
-            className="bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition"
+            title="Ajouter aux favoris"
+            className={`product-action-button bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition ${heartPulse ? "product-heart-pulse" : ""}`}
           >
-            <Heart className="w-5 h-5" />
+            <Heart className={`w-5 h-5 ${heartPulse ? "fill-current" : ""}`} />
           </button>
           <button
+            type="button"
             onClick={handleShareProduct}
             aria-label="Partager cet article"
-            className="bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition"
+            title="Partager cet article"
+            className="product-action-button bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition"
           >
             <Share2 className="w-5 h-5" />
           </button>
