@@ -31,39 +31,36 @@ const ProductCard = ({ product, animationDelay = 0 }) => {
   const handleShareProduct = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const productUrl = `${window.location.origin}/product/${product.id}`;
+
+    // Share the backend preview URL (Open Graph metadata + branded product image).
+    // Do not attach the image file: messaging apps need the URL to build a rich link card.
+    const backendUrl = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/$/, '');
+    if (!backendUrl) {
+      toast.error("Le partage du produit n'est pas configuré. Réessaie plus tard.");
+      return;
+    }
+
+    const shareUrl = `${backendUrl}/share/products/${encodeURIComponent(product.id)}`;
     const shareData = {
-      title: product.name,
-      text: `${product.name} — découvrez cet article sur KOFFI SHOP`,
-      url: productUrl,
+      title: `${product.name} | KOFFI SHOP`,
+      text: `${product.name} — Prix : $${Number(product.price || 0).toFixed(2)}. Découvrez cet article sur KOFFI SHOP :`,
+      url: shareUrl,
     };
 
     try {
-      if (product.images?.[0] && navigator.share && navigator.canShare) {
-        try {
-          const response = await fetch(product.images[0]);
-          const blob = await response.blob();
-          const extension = blob.type.split('/')[1] || 'jpg';
-          const imageFile = new File([blob], `koffi-${product.id}.${extension}`, { type: blob.type || 'image/jpeg' });
-          if (navigator.canShare({ files: [imageFile] })) {
-            await navigator.share({ ...shareData, files: [imageFile] });
-            return;
-          }
-        } catch (imageError) {
-          // Fall back to sharing the product link.
-        }
-      }
-
       if (navigator.share) {
         await navigator.share(shareData);
       } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(productUrl);
-        toast.success('Lien du produit copié');
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("Lien du produit copié. Colle-le dans WhatsApp pour afficher l'aperçu.");
       } else {
-        window.prompt('Copiez le lien du produit :', productUrl);
+        window.prompt("Copie le lien du produit :", shareUrl);
       }
     } catch (error) {
-      if (error.name !== 'AbortError') toast.error('Impossible de partager cet article');
+      if (error.name !== 'AbortError') {
+        console.error('Product link share failed:', error);
+        toast.error("Impossible de partager ce produit. Réessaie.");
+      }
     }
   };
 
