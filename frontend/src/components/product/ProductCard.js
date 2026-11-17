@@ -9,8 +9,29 @@ import { toast } from 'sonner';
 const ProductCard = ({ product, animationDelay = 0 }) => {
   const [heartPulse, setHeartPulse] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [actionsVisible, setActionsVisible] = useState(false);
   const { addToCart } = useCart();
   const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    const closeOtherCards = (event) => {
+      if (event.detail?.productId !== product.id) setActionsVisible(false);
+    };
+    window.addEventListener('koffi-product-card-select', closeOtherCards);
+    return () => window.removeEventListener('koffi-product-card-select', closeOtherCards);
+  }, [product.id]);
+
+  const handleProductImageClick = (event) => {
+    const isTouchLayout = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    if (!isTouchLayout) return; // Desktop keeps normal image-to-product navigation.
+    event.preventDefault();
+    event.stopPropagation();
+    const nextVisible = !actionsVisible;
+    setActionsVisible(nextVisible);
+    if (nextVisible) {
+      window.dispatchEvent(new CustomEvent('koffi-product-card-select', { detail: { productId: product.id } }));
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -91,7 +112,7 @@ const ProductCard = ({ product, animationDelay = 0 }) => {
   return (
     <div className="product-card product-card-enter bg-dark-light rounded-xl overflow-hidden group hover:shadow-glow transition" style={{ "--product-card-delay": `${animationDelay}ms` }} data-testid={`product-card-${product.id}`}>
       <div className="relative overflow-hidden aspect-square">
-        <Link to={`/product/${product.id}`} className="block w-full h-full" aria-label={`Voir ${product.name}`}>
+        <Link to={`/product/${product.id}`} onClick={handleProductImageClick} className="block w-full h-full" aria-label={`Voir ${product.name} et afficher les actions`}>
           <img src={product.images?.[0] || ''} alt={product.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
         </Link>
         {product.discount_percentage > 0 && (
@@ -100,7 +121,7 @@ const ProductCard = ({ product, animationDelay = 0 }) => {
         {product.is_new && (
           <span className="absolute top-4 left-4 z-10 bg-white text-dark font-bold px-3 py-1 rounded-full text-sm pointer-events-none">NOUVEAU</span>
         )}
-        <div className="product-card-actions absolute inset-0 z-20 flex items-center justify-center gap-2">
+        <div className={`product-card-actions absolute inset-0 z-20 flex items-center justify-center gap-2 ${actionsVisible ? "product-card-actions--selected" : ""}`}>
           <button type="button" onClick={handleAddToCart} disabled={Number(product.stock) <= 0} aria-label="Ajouter au panier" title="Ajouter au panier" className="product-action-button bg-primary text-dark p-3 rounded-full hover:bg-primary-light transition disabled:opacity-50" data-testid={`add-to-cart-${product.id}`}>
             <ShoppingCart className="w-5 h-5" />
           </button>
