@@ -23,8 +23,21 @@ const Header = () => {
         {/* Top Bar */}
         <div className="flex items-center justify-between py-4">
           {/* Logo */}
-          <Link to="/" aria-label="KOFFI SHOP — Accueil" className="inline-flex items-center gap-2 text-2xl font-bold font-poppins">
-            <span><span className="text-white">KOFFI</span><span className="text-primary"> SHOP</span></span>
+          <Link
+            to="/"
+            aria-label="KOFFI SHOP — Accueil"
+            className="inline-flex items-center gap-2 sm:gap-2.5 min-w-0 text-2xl font-bold font-poppins"
+          >
+            <img
+              src="/koffi-logo.svg"
+              alt=""
+              aria-hidden="true"
+              className="w-9 h-9 sm:w-10 sm:h-10 object-contain shrink-0"
+            />
+            <span className="whitespace-nowrap leading-none tracking-tight">
+              <span className="text-white">OFFI</span>
+              <span className="text-primary"> SHOP</span>
+            </span>
           </Link>
 
           {/* Search Bar - Desktop */}
