@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, ShoppingCart, Heart, Share2 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -8,12 +8,23 @@ import { toast } from 'sonner';
 
 const ProductCard = ({ product, animationDelay = 0 }) => {
   const [heartPulse, setHeartPulse] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
   const { addToCart } = useCart();
   const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    let active = true;
+    if (!isAuthenticated) { setIsFavorite(false); return () => { active = false; }; }
+    wishlistAPI.getWishlist().then(({ data }) => {
+      if (active) setIsFavorite(data.some((item) => item.product_id === product.id));
+    }).catch((error) => console.warn('Impossible de charger les favoris:', error));
+    return () => { active = false; };
+  }, [isAuthenticated, product.id]);
 
   const handleAddToCart = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (Number(product.stock) <= 0) { toast.error('Produit en rupture de stock'); return; }
     addToCart(product, 1);
   };
 
@@ -66,8 +77,15 @@ const ProductCard = ({ product, animationDelay = 0 }) => {
       return;
     }
     try {
-      await wishlistAPI.addToWishlist(product.id);
-      toast.success('Ajouté aux favoris');
+      if (isFavorite) {
+        await wishlistAPI.removeFromWishlist(product.id);
+        setIsFavorite(false);
+        toast.success('Retiré de vos favoris');
+      } else {
+        await wishlistAPI.addToWishlist(product.id);
+        setIsFavorite(true);
+        toast.success('Ajouté aux favoris');
+      }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Erreur');
     }
@@ -75,53 +93,28 @@ const ProductCard = ({ product, animationDelay = 0 }) => {
 
   return (
     <div className="product-card product-card-enter bg-dark-light rounded-xl overflow-hidden group hover:shadow-glow transition" style={{ "--product-card-delay": `${animationDelay}ms` }} data-testid={`product-card-${product.id}`}>
-      <Link to={`/product/${product.id}`} className="block relative overflow-hidden aspect-square">
-        <img
-          src={product.images?.[0] || ''}
-          alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-        />
+      <div className="relative overflow-hidden aspect-square">
+        <Link to={`/product/${product.id}`} className="block w-full h-full" aria-label={`Voir ${product.name}`}>
+          <img src={product.images?.[0] || ''} alt={product.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+        </Link>
         {product.discount_percentage > 0 && (
-          <span className="absolute top-4 right-4 bg-primary text-dark font-bold px-3 py-1 rounded-full text-sm">
-            -{product.discount_percentage}%
-          </span>
+          <span className="absolute top-4 right-4 z-10 bg-primary text-dark font-bold px-3 py-1 rounded-full text-sm pointer-events-none">-{product.discount_percentage}%</span>
         )}
         {product.is_new && (
-          <span className="absolute top-4 left-4 bg-white text-dark font-bold px-3 py-1 rounded-full text-sm">
-            NOUVEAU
-          </span>
+          <span className="absolute top-4 left-4 z-10 bg-white text-dark font-bold px-3 py-1 rounded-full text-sm pointer-events-none">NOUVEAU</span>
         )}
-        <div className="product-card-actions absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={handleAddToCart}
-            aria-label={`Ajouter ${product.name} au panier`}
-            title="Ajouter au panier"
-            className="product-action-button bg-primary text-dark p-3 rounded-full hover:bg-primary-light transition"
-            data-testid={`add-to-cart-${product.id}`}
-          >
+        <div className="product-card-actions absolute inset-0 z-20 flex items-center justify-center gap-2">
+          <button type="button" onClick={handleAddToCart} disabled={Number(product.stock) <= 0} aria-label="Ajouter au panier" title="Ajouter au panier" className="product-action-button bg-primary text-dark p-3 rounded-full hover:bg-primary-light transition disabled:opacity-50" data-testid={`add-to-cart-${product.id}`}>
             <ShoppingCart className="w-5 h-5" />
           </button>
-          <button
-            type="button"
-            onClick={handleAddToWishlist}
-            aria-label="Ajouter aux favoris"
-            title="Ajouter aux favoris"
-            className={`product-action-button bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition ${heartPulse ? "product-heart-pulse" : ""}`}
-          >
-            <Heart className={`w-5 h-5 ${heartPulse ? "fill-current" : ""}`} />
+          <button type="button" onClick={handleAddToWishlist} aria-label={isFavorite ? "Retirer des favoris" : "Ajouter aux favoris"} aria-pressed={isFavorite} title={isFavorite ? "Retirer des favoris" : "Ajouter aux favoris"} className={`product-action-button bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition ${heartPulse ? "product-heart-pulse" : ""}`}>
+            <Heart className={`w-5 h-5 ${isFavorite ? "fill-red-500 text-red-500" : ""} ${heartPulse ? "scale-110" : ""}`} />
           </button>
-          <button
-            type="button"
-            onClick={handleShareProduct}
-            aria-label="Partager cet article"
-            title="Partager cet article"
-            className="product-action-button bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition"
-          >
+          <button type="button" onClick={handleShareProduct} aria-label="Partager cet article" title="Partager cet article" className="product-action-button bg-white text-dark p-3 rounded-full hover:bg-gray-200 transition">
             <Share2 className="w-5 h-5" />
           </button>
         </div>
-      </Link>
+      </div>
       <div className="p-4">
         <Link to={`/product/${product.id}`}>
           <h3 className="text-white font-semibold mb-2 line-clamp-1 group-hover:text-primary transition">
