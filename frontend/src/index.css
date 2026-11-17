@@ -176,12 +176,52 @@ table { max-width: 100%; }
 }
 .product-detail-page .product-detail-actions > button { min-width: 0; }
 
+/* Product actions stay hidden until hover (desktop) or explicit tap (touch). */
+.product-card-actions {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  background-color: transparent;
+  transition: opacity 180ms ease, visibility 180ms ease, background-color 180ms ease;
+}
+.product-card-actions .product-action-button {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+@media (hover: hover) and (pointer: fine) {
+  .product-card:hover .product-card-actions,
+  .product-card:focus-within .product-card-actions {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .product-card:hover .product-card-actions .product-action-button,
+  .product-card:focus-within .product-card-actions .product-action-button {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+}
 @media (hover: none), (pointer: coarse) {
   .product-card-actions {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    background-color: transparent !important;
+  }
+  .product-card-actions.product-card-actions--selected {
     opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
     background-color: rgba(0, 0, 0, 0.22) !important;
   }
-  .product-card-actions button { opacity: 1; transform: none; }
+  .product-card-actions.product-card-actions--selected .product-action-button {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: none !important;
+  }
 }
 @media (max-width: 767px) {
   .header-actions { gap: 0.45rem; }
